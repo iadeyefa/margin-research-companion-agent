@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+psycopg://postgres:password@localhost:5433/sports_agent"
+    database_url: str = "sqlite:///./sports_agent.db"
     redis_url: str = "redis://localhost:6379"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "mistral"

@@ -31,17 +31,17 @@ FRONTEND_URL=http://localhost:5173
 
 ## Run
 
-From the repo root, start Postgres and Redis:
-
-```bash
-docker compose up -d postgres redis
-```
-
-Then run the API:
+By default, local development uses SQLite, so you can start the API without Docker:
 
 ```bash
 cd backend
 uvicorn app.main:app --reload --host 0.0.0.0 --port 3000
+```
+
+If you want to use Postgres instead, install Docker Desktop, start Postgres and Redis from the repo root, and set `DATABASE_URL` in `backend/.env`:
+
+```bash
+DATABASE_URL=postgresql+psycopg://postgres:password@localhost:5433/sports_agent
 ```
 
 API docs are available at `http://localhost:3000/docs`.
