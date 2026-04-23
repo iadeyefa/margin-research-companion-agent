@@ -1,4 +1,8 @@
 node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
 
 # Keep environment variables out of version control
 .env
