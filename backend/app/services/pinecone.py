@@ -3,7 +3,7 @@ from typing import Any
 from pinecone import Pinecone
 
 from app.core.config import get_settings
-from app.services.llm import embeddings
+from app.services.embeddings import embed_text, embed_texts
 
 
 settings = get_settings()
@@ -17,7 +17,7 @@ def _get_index():
 
 
 async def store_game_data(game_id: str, game_data: str, metadata: dict[str, Any]) -> None:
-    vector = await embeddings.aembed_query(game_data)
+    vector = await embed_text(game_data)
     index = _get_index()
     index.upsert(
         vectors=[
@@ -30,8 +30,36 @@ async def store_game_data(game_id: str, game_data: str, metadata: dict[str, Any]
     )
 
 
+async def store_text_records(
+    records: list[dict[str, Any]],
+    batch_size: int = 100,
+    namespace: str | None = None,
+) -> int:
+    if not records:
+        return 0
+
+    index = _get_index()
+    total = 0
+
+    for start in range(0, len(records), batch_size):
+        batch = records[start : start + batch_size]
+        vectors = await embed_texts([record["text"] for record in batch])
+        pinecone_vectors = [
+            {
+                "id": record["id"],
+                "values": vector,
+                "metadata": {**record.get("metadata", {}), "text": record["text"]},
+            }
+            for record, vector in zip(batch, vectors, strict=True)
+        ]
+        index.upsert(vectors=pinecone_vectors, namespace=namespace)
+        total += len(pinecone_vectors)
+
+    return total
+
+
 async def retrieve_similar_games(query: str, top_k: int = 5) -> list[dict[str, Any]]:
-    vector = await embeddings.aembed_query(query)
+    vector = await embed_text(query)
     index = _get_index()
     results = index.query(vector=vector, top_k=top_k, include_metadata=True)
     matches = getattr(results, "matches", None)

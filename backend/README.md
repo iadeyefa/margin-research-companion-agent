@@ -20,7 +20,7 @@ DATABASE_URL=postgresql+psycopg://postgres:password@localhost:5433/sports_agent
 REDIS_URL=redis://localhost:6379
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=mistral
-EMBEDDINGS_MODEL=nomic-embed-text
+EMBEDDINGS_MODEL=sentence-transformers/all-MiniLM-L6-v2
 PINECONE_API_KEY=your_key_here
 PINECONE_INDEX_NAME=sports-analysis
 JWT_SECRET=dev-secret
@@ -45,3 +45,46 @@ DATABASE_URL=postgresql+psycopg://postgres:password@localhost:5433/sports_agent
 ```
 
 API docs are available at `http://localhost:3000/docs`.
+
+## Ingest NBA Data Into Pinecone
+
+1. Download the Kaggle NBA CSV dataset.
+2. Put `Games.csv` here:
+
+```text
+backend/data/raw/Games.csv
+```
+
+3. Make sure `backend/.env` has:
+
+```bash
+PINECONE_API_KEY=your_key_here
+PINECONE_INDEX_NAME=sports-analysis
+EMBEDDINGS_MODEL=sentence-transformers/all-MiniLM-L6-v2
+```
+
+4. Preview the generated text before uploading:
+
+```bash
+cd backend
+source .venv/bin/activate
+python scripts/ingest_nba_csv.py --limit 5 --dry-run
+```
+
+5. Run a small test ingest:
+
+```bash
+python scripts/ingest_nba_csv.py --limit 25
+```
+
+6. If the test looks good in Pinecone, ingest more:
+
+```bash
+python scripts/ingest_nba_csv.py --limit 1000
+```
+
+7. Full ingest:
+
+```bash
+python scripts/ingest_nba_csv.py
+```

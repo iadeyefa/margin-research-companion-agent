@@ -1,6 +1,6 @@
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
-from langchain_ollama import ChatOllama, OllamaEmbeddings
+from langchain_ollama import ChatOllama
 
 from app.core.config import get_settings
 
@@ -12,11 +12,6 @@ ollama = ChatOllama(
     model=settings.ollama_model,
     temperature=0.3,
     num_ctx=2048,
-)
-
-embeddings = OllamaEmbeddings(
-    base_url=settings.ollama_base_url,
-    model=settings.embeddings_model,
 )
 
 sports_analysis_prompt = PromptTemplate.from_template(
