@@ -20,6 +20,11 @@
   color: #f8fbff;
 }
 
+.sidebar-top {
+  display: grid;
+  gap: 28px;
+}
+
 .eyebrow,
 .panel-label {
   margin: 0 0 12px;
@@ -39,6 +44,93 @@ h1 {
 .intro {
   margin: 16px 0 0;
   color: #d7e5ef;
+}
+
+.thread-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.thread-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.thread-panel-header .panel-label {
+  margin-bottom: 0;
+}
+
+.new-thread-button,
+.secondary-action {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #f8fbff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.thread-list {
+  display: grid;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.thread-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.thread-card.active {
+  border-color: rgba(158, 216, 201, 0.74);
+  background: rgba(158, 216, 201, 0.12);
+}
+
+.thread-card-main {
+  min-width: 0;
+}
+
+.thread-card-main h2,
+.chat-title {
+  margin: 0;
+  font-size: 1.08rem;
+  line-height: 1.2;
+}
+
+.thread-card-main p {
+  margin: 6px 0 0;
+  color: #d7e5ef;
+  font-size: 0.88rem;
+}
+
+.thread-card-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.thread-card-actions button {
+  border: 0;
+  padding: 0;
+  color: #9ed8c9;
+  background: transparent;
+  font-size: 0.88rem;
+}
+
+.thread-title-input {
+  width: 100%;
+  border: 1px solid rgba(158, 216, 201, 0.52);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #f8fbff;
+  background: rgba(4, 25, 40, 0.4);
+  font: inherit;
+  outline: none;
 }
 
 .examples {
@@ -78,9 +170,27 @@ h1 {
 
 .chat-panel {
   display: grid;
-  grid-template-rows: 1fr auto auto;
+  grid-template-rows: auto 1fr auto auto;
   min-width: 0;
   padding: 28px;
+}
+
+.chat-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 4px 18px;
+}
+
+.chat-panel .panel-label {
+  color: #547089;
+}
+
+.secondary-action {
+  color: #103b5b;
+  background: #ffffff;
+  border-color: #d7e0e9;
 }
 
 .messages {
@@ -186,6 +296,12 @@ button {
   .chat-panel {
     min-height: 70vh;
     padding: 18px;
+  }
+
+  .chat-panel-header,
+  .thread-panel-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .composer {

@@ -43,6 +43,24 @@ def clean_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
+def to_int(raw_value: str) -> int | None:
+    if raw_value == "":
+        return None
+    try:
+        return int(float(raw_value))
+    except ValueError:
+        return None
+
+
+def to_float(raw_value: str) -> float | None:
+    if raw_value == "":
+        return None
+    try:
+        return float(raw_value)
+    except ValueError:
+        return None
+
+
 def normalize_date(raw_date: str) -> str:
     if not raw_date:
         return ""
@@ -114,6 +132,8 @@ def make_record(row: dict[str, str], row_number: int) -> dict[str, Any]:
     location = value(row, "game_location", "location", "venue", "arena")
     playoffs = value(row, "is_playoffs", "playoffs", "isplayoffs")
     game_type = value(row, "gameType", "game_type")
+    if not game_type and playoffs in {"1", "true", "True", "TRUE"}:
+        game_type = "Playoffs"
     game_label = value(row, "gameLabel", "game_label")
     game_sub_label = value(row, "gameSubLabel", "game_sub_label")
     assists = value(row, "assists")
@@ -189,6 +209,16 @@ def make_record(row: dict[str, str], row_number: int) -> dict[str, Any]:
                 "result": result or win,
                 "game_type": game_type,
                 "game_label": game_label,
+                "points": to_int(points),
+                "opponent_points": to_int(opponent_points),
+                "assists": to_int(assists),
+                "rebounds": to_int(rebounds),
+                "steals": to_int(steals),
+                "blocks": to_int(blocks),
+                "turnovers": to_int(turnovers),
+                "fg_pct": to_float(fg_pct),
+                "three_pct": to_float(three_pct),
+                "plus_minus": to_float(plus_minus),
             }
         ),
     }

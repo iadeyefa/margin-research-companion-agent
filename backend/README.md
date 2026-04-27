@@ -25,6 +25,8 @@ PINECONE_API_KEY=your_key_here
 PINECONE_INDEX_NAME=sports-analysis
 CEREBRAS_API_KEY=your_key_here
 CEREBRAS_MODEL=llama3.1-8b
+CURRENT_NBA_SEASON=2025-26
+CURRENT_NBA_SEASON_YEAR=2026
 JWT_SECRET=dev-secret
 PORT=3000
 NODE_ENV=development
@@ -89,4 +91,37 @@ python scripts/ingest_nba_csv.py --limit 1000
 
 ```bash
 python scripts/ingest_nba_csv.py
+```
+
+## Ingest Current NBA.com Data With `nba_api`
+
+Use this when you want fresher current-season or playoff data in the same Pinecone index.
+
+1. Make sure `backend/.env` includes:
+
+```bash
+PINECONE_API_KEY=your_key_here
+PINECONE_INDEX_NAME=sports-analysis
+CURRENT_NBA_SEASON=2025-26
+CURRENT_NBA_SEASON_YEAR=2026
+```
+
+2. Preview current regular season and playoff records:
+
+```bash
+cd backend
+source .venv/bin/activate
+python scripts/ingest_nba_api_games.py --dry-run --limit 5
+```
+
+3. Ingest both regular season and playoff records into the existing index:
+
+```bash
+python scripts/ingest_nba_api_games.py
+```
+
+4. Ingest only playoff records if you want prediction answers to lean harder on postseason form:
+
+```bash
+python scripts/ingest_nba_api_games.py --season-type Playoffs
 ```

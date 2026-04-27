@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     pinecone_index_name: str = "sports-analysis"
     cerebras_api_key: str = ""
     cerebras_model: str = "llama3.1-8b"
+    current_nba_season: str = "2025-26"
+    current_nba_season_year: int = 2026
     jwt_secret: str = "dev-secret"
     port: int = 3000
     node_env: str = "development"
