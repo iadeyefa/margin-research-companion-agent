@@ -58,10 +58,19 @@ async def store_text_records(
     return total
 
 
-async def retrieve_similar_games(query: str, top_k: int = 5) -> list[dict[str, Any]]:
+async def retrieve_similar_games(
+    query: str,
+    top_k: int = 5,
+    metadata_filter: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     vector = await embed_text(query)
     index = _get_index()
-    results = index.query(vector=vector, top_k=top_k, include_metadata=True)
+    results = index.query(
+        vector=vector,
+        top_k=top_k,
+        include_metadata=True,
+        filter=metadata_filter,
+    )
     matches = getattr(results, "matches", None)
     if matches is None and isinstance(results, dict):
         matches = results.get("matches", [])

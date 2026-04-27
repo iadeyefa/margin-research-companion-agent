@@ -23,6 +23,8 @@ OLLAMA_MODEL=mistral
 EMBEDDINGS_MODEL=sentence-transformers/all-MiniLM-L6-v2
 PINECONE_API_KEY=your_key_here
 PINECONE_INDEX_NAME=sports-analysis
+CEREBRAS_API_KEY=your_key_here
+CEREBRAS_MODEL=llama3.1-8b
 JWT_SECRET=dev-secret
 PORT=3000
 NODE_ENV=development
@@ -49,10 +51,10 @@ API docs are available at `http://localhost:3000/docs`.
 ## Ingest NBA Data Into Pinecone
 
 1. Download the Kaggle NBA CSV dataset.
-2. Put `Games.csv` here:
+2. Put the dataset folder here:
 
 ```text
-backend/data/raw/Games.csv
+backend/data/raw/NBA box scores/
 ```
 
 3. Make sure `backend/.env` has:

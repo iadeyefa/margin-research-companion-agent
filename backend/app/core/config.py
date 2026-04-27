@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     embeddings_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     pinecone_api_key: str = ""
     pinecone_index_name: str = "sports-analysis"
+    cerebras_api_key: str = ""
+    cerebras_model: str = "llama3.1-8b"
     jwt_secret: str = "dev-secret"
     port: int = 3000
     node_env: str = "development"

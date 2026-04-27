@@ -21,7 +21,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Sports Analysis Agent API", lifespan=lifespan)
 
-origins = ["http://localhost:5173"] if settings.node_env == "development" else [settings.frontend_url]
+origins = (
+    [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ]
+    if settings.node_env == "development"
+    else [settings.frontend_url]
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
