@@ -123,7 +123,7 @@ button { font: inherit; cursor: pointer; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--accent), var(--violet));
+  background: linear-gradient(135deg, var(--accent), var(--rose));
   color: white;
   font-weight: 700;
   border-radius: 9px;
@@ -216,7 +216,7 @@ button { font: inherit; cursor: pointer; }
 }
 .workspace-initial {
   background: var(--bg-soft);
-  color: var(--violet);
+  color: var(--rose);
   font-weight: 700;
 }
 

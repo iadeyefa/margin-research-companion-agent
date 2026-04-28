@@ -73,10 +73,10 @@ export type WorkspaceDetail = WorkspaceSummary & {
 }
 
 export const SOURCE_OPTIONS: Array<{ key: SourceKey; label: string; tone: string }> = [
-  { key: 'semantic_scholar', label: 'Semantic Scholar', tone: 'tone-violet' },
+  { key: 'semantic_scholar', label: 'Semantic Scholar', tone: 'tone-rose' },
   { key: 'openalex', label: 'OpenAlex', tone: 'tone-teal' },
   { key: 'crossref', label: 'Crossref', tone: 'tone-amber' },
-  { key: 'pubmed', label: 'PubMed', tone: 'tone-rose' },
+  { key: 'pubmed', label: 'PubMed', tone: 'tone-violet' },
   { key: 'arxiv', label: 'arXiv', tone: 'tone-red' },
 ]
 
