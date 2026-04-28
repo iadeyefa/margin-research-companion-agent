@@ -12,12 +12,14 @@ import { SavedTab } from './pages/workspace/Saved'
 import { SearchTab } from './pages/workspace/Search'
 import { SynthesisTab } from './pages/workspace/Synthesis'
 import { WorkspaceLayout } from './pages/workspace/WorkspaceLayout'
+import { ThemeProvider } from './state/ThemeProvider'
 import { WorkspaceStoreProvider } from './state/WorkspaceStore'
 
 function App() {
   return (
     <Router>
-      <WorkspaceStoreProvider>
+      <ThemeProvider>
+        <WorkspaceStoreProvider>
         <Routes>
           <Route element={<AppShell />}>
             <Route index element={<DashboardPage />} />
@@ -36,7 +38,8 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
-      </WorkspaceStoreProvider>
+        </WorkspaceStoreProvider>
+      </ThemeProvider>
     </Router>
   )
 }

@@ -1,5 +1,7 @@
 /* === Tokens =================================================== */
-:root {
+:root,
+[data-theme='light'] {
+  color-scheme: light;
   --bg: #f7f7fb;
   --bg-elevated: #ffffff;
   --bg-soft: #f1f2f7;
@@ -32,6 +34,39 @@
   --radius-md: 12px;
   --radius-lg: 16px;
   --focus-ring: 0 0 0 3px rgba(91, 108, 255, 0.25);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0e1018;
+  --bg-elevated: #161927;
+  --bg-soft: #1c2030;
+  --bg-soft-strong: #232839;
+  --surface: rgba(22, 25, 39, 0.92);
+  --surface-strong: #161927;
+  --ink: #f1f3fb;
+  --ink-soft: #c8cee0;
+  --muted: #8a90a8;
+  --muted-soft: #6a708a;
+  --line: #2a2f42;
+  --line-soft: #232839;
+  --accent: #8a96ff;
+  --accent-soft: rgba(138, 150, 255, 0.16);
+  --accent-strong: #a3acff;
+  --accent-ink: #0e1018;
+  --rose: #ff7faa;
+  --teal: #46cdb2;
+  --amber: #e0a64a;
+  --violet: #b694ff;
+  --red: #ff7470;
+  --slate: #97a0bf;
+  --warning: #e0a64a;
+  --error: #ff8b8a;
+  --success: #5dc88f;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 18px 40px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.45);
+  --focus-ring: 0 0 0 3px rgba(138, 150, 255, 0.35);
 }
 
 * { box-sizing: border-box; }
@@ -150,7 +185,7 @@ button { font: inherit; cursor: pointer; }
   color: var(--muted);
   flex: none;
 }
-.app-nav-link.is-active .app-nav-icon { background: white; color: var(--accent-strong); }
+.app-nav-link.is-active .app-nav-icon { background: var(--bg-elevated); color: var(--accent-strong); }
 
 .app-shell-v2.is-collapsed .app-nav-link { justify-content: center; padding: 8px 4px; }
 .app-shell-v2.is-collapsed .app-nav-label-text,
@@ -180,7 +215,7 @@ button { font: inherit; cursor: pointer; }
   margin-top: 2px;
 }
 .workspace-initial {
-  background: linear-gradient(135deg, #f3eaff, #e6efff);
+  background: var(--bg-soft);
   color: var(--violet);
   font-weight: 700;
 }
@@ -1063,6 +1098,81 @@ input[type="checkbox"] { width: auto; }
   border-top: 1px solid var(--line);
   background: var(--bg-soft);
 }
+
+/* === Theme toggle =========================================== */
+.theme-toggle {
+  display: flex;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-soft);
+  padding: 3px;
+  gap: 2px;
+}
+.theme-toggle-option {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.theme-toggle-option.is-active {
+  background: var(--bg-elevated);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+.theme-toggle-option:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.theme-toggle-label { display: inline-block; }
+
+.theme-icon-button { width: 32px; height: 32px; }
+
+.app-nav-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 6px;
+  margin-top: auto;
+  border-top: 1px solid var(--line);
+}
+.app-nav-footer-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Slightly stronger paper card border in dark mode for legibility */
+[data-theme='dark'] .paper-card,
+[data-theme='dark'] .surface,
+[data-theme='dark'] .stat-card,
+[data-theme='dark'] .workspace-tile,
+[data-theme='dark'] .brief-card,
+[data-theme='dark'] .reading-step {
+  background: var(--surface-strong);
+}
+
+[data-theme='dark'] .pill-button.is-primary {
+  color: #0e1018;
+  box-shadow: 0 6px 14px rgba(138, 150, 255, 0.25);
+}
+
+[data-theme='dark'] .toast { background: var(--bg-soft-strong); color: var(--ink); }
+[data-theme='dark'] .toast.tone-error { background: var(--error); color: #1b0d0d; }
+[data-theme='dark'] .toast.tone-success { background: var(--success); color: #0d1a13; }
+
+[data-theme='dark'] .selection-bar { background: var(--bg-soft-strong); border: 1px solid var(--line); }
+[data-theme='dark'] .selection-bar-summary strong { background: var(--accent); color: var(--accent-ink); }
+
+[data-theme='dark'] .command-palette-backdrop { background: rgba(0, 0, 0, 0.5); }
 
 /* === Responsiveness ========================================= */
 @media (max-width: 880px) {

@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useWorkspaceStore } from '../state/WorkspaceStore'
 import { CommandPalette } from './CommandPalette'
 import { SelectionBar } from './SelectionBar'
+import { ThemeToggle } from './ThemeToggle'
 import { Toaster } from './Toaster'
 
 const PRIMARY_NAV: Array<{ to: string; label: string; icon: string }> = [
@@ -126,8 +127,17 @@ export function AppShell() {
         </nav>
 
         <div className="app-nav-footer">
-          <kbd>⌘K</kbd>
-          {!collapsed && <span>Command palette</span>}
+          {collapsed ? (
+            <ThemeToggle compact />
+          ) : (
+            <>
+              <ThemeToggle />
+              <div className="app-nav-footer-hint">
+                <kbd>⌘K</kbd>
+                <span>Command palette</span>
+              </div>
+            </>
+          )}
         </div>
       </aside>
 
