@@ -117,7 +117,27 @@ Selected papers:
 
     async with httpx.AsyncClient(timeout=60) as client:
         response = await client.post(CEREBRAS_URL, headers=headers, json=payload)
-        response.raise_for_status()
+        if response.status_code >= 400:
+            ordered = sorted(papers, key=_heuristic_priority, reverse=True)
+            steps = [
+                {
+                    "order": index,
+                    "title": paper.get("title", "Untitled"),
+                    "source": paper.get("source", "unknown"),
+                    "external_id": paper.get("external_id", ""),
+                    "rationale": _heuristic_rationale(paper, index),
+                }
+                for index, paper in enumerate(ordered, start=1)
+            ]
+            return {
+                "objective": objective or "Build a clean reading sequence",
+                "overview": (
+                    "Falling back to a heuristic reading order because the LLM call failed "
+                    f"(status {response.status_code}). Set CEREBRAS_MODEL to a model returned by "
+                    "https://api.cerebras.ai/v1/models if this keeps happening."
+                ),
+                "steps": steps,
+            }
         data = response.json()
 
     import json

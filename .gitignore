@@ -56,3 +56,8 @@ Thumbs.db
 # --- Misc ---
 tmp/
 .cache/
+
+# --- Local SQLite databases ---
+backend/*.db
+*.sqlite
+*.sqlite3

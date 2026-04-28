@@ -115,7 +115,20 @@ Selected papers:
 
     async with httpx.AsyncClient(timeout=60) as client:
         response = await client.post(CEREBRAS_URL, headers=headers, json=payload)
-        response.raise_for_status()
+        if response.status_code >= 400:
+            try:
+                error_payload = response.json()
+                detail = error_payload.get("message") or error_payload.get("error") or response.text
+            except Exception:
+                detail = response.text
+            return (
+                "The synthesis model returned an error.\n"
+                f"Status: {response.status_code}\n"
+                f"Model: {settings.cerebras_model}\n"
+                f"Detail: {detail}\n\n"
+                "If this says the model does not exist, set CEREBRAS_MODEL in backend/.env to one of "
+                "the models listed at https://api.cerebras.ai/v1/models."
+            )
         data = response.json()
 
     return data["choices"][0]["message"]["content"]
