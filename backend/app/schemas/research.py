@@ -22,6 +22,10 @@ class ResearchSearchRequest(ApiModel):
     limit_per_source: int = 5
     sources: list[str] | None = None
     workspace_id: int | None = None
+    year_from: int | None = None
+    year_to: int | None = None
+    open_access_only: bool = False
+    sort_by: str = "relevance"
 
 
 class ResearchSearchResponse(ApiModel):

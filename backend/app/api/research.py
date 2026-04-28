@@ -34,6 +34,10 @@ async def search_research(payload: ResearchSearchRequest, db: Session = Depends(
         query=query,
         limit_per_source=max(1, min(payload.limit_per_source, 10)),
         sources=payload.sources,
+        year_from=payload.year_from,
+        year_to=payload.year_to,
+        open_access_only=payload.open_access_only,
+        sort_by=payload.sort_by,
     )
     db.add(
         ResearchSearch(

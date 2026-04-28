@@ -279,6 +279,10 @@ async def search_publications(
     query: str,
     limit_per_source: int = 5,
     sources: list[str] | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    open_access_only: bool = False,
+    sort_by: str = "relevance",
 ) -> tuple[list[dict[str, Any]], dict[str, str]]:
     chosen_sources = [source for source in (sources or list(SUPPORTED_SOURCES)) if source in SUPPORTED_SOURCES]
     source_errors: dict[str, str] = {}
@@ -304,11 +308,43 @@ async def search_publications(
             continue
         merged_results.extend(result)
 
-    merged_results.sort(
-        key=lambda item: (
-            item.get("citation_count") is None,
-            -(item.get("citation_count") or 0),
-            -(item.get("year") or 0),
+    filtered_results = _dedupe_results(merged_results)
+
+    if year_from is not None:
+        filtered_results = [
+            item for item in filtered_results if item.get("year") is not None and int(item["year"]) >= year_from
+        ]
+    if year_to is not None:
+        filtered_results = [
+            item for item in filtered_results if item.get("year") is not None and int(item["year"]) <= year_to
+        ]
+    if open_access_only:
+        filtered_results = [item for item in filtered_results if item.get("open_access")]
+
+    if sort_by == "newest":
+        filtered_results.sort(
+            key=lambda item: (
+                item.get("year") is None,
+                -(item.get("year") or 0),
+                item.get("citation_count") is None,
+                -(item.get("citation_count") or 0),
+            )
         )
-    )
-    return _dedupe_results(merged_results), source_errors
+    elif sort_by == "most_cited":
+        filtered_results.sort(
+            key=lambda item: (
+                item.get("citation_count") is None,
+                -(item.get("citation_count") or 0),
+                -(item.get("year") or 0),
+            )
+        )
+    else:
+        filtered_results.sort(
+            key=lambda item: (
+                item.get("citation_count") is None,
+                -(item.get("citation_count") or 0),
+                -(item.get("year") or 0),
+            )
+        )
+
+    return filtered_results, source_errors

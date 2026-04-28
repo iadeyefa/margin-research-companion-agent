@@ -26,6 +26,8 @@ type SearchResponse = {
   source_errors: Record<string, string>
 }
 
+type SortOption = 'relevance' | 'newest' | 'most_cited'
+
 type ExportResponse = {
   format: string
   content: string
@@ -78,12 +80,6 @@ const sourceOptions: Array<{ key: SourceKey; label: string }> = [
   { key: 'arxiv', label: 'arXiv' },
 ]
 
-const starterQueries = [
-  'retrieval augmented generation for scientific search',
-  'LLM evaluation benchmarks 2024 2025',
-  'chain-of-thought prompting tool use papers',
-]
-
 const paperKey = (paper: Paper) => `${paper.source}::${paper.external_id}`
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -104,11 +100,18 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function App() {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<number | null>(null)
   const [workspaceDetail, setWorkspaceDetail] = useState<WorkspaceDetail | null>(null)
   const [query, setQuery] = useState('')
   const [enabledSources, setEnabledSources] = useState<SourceKey[]>(sourceOptions.map((option) => option.key))
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false)
+  const [yearFrom, setYearFrom] = useState('')
+  const [yearTo, setYearTo] = useState('')
+  const [limitPerSource, setLimitPerSource] = useState('4')
+  const [openAccessOnly, setOpenAccessOnly] = useState(false)
+  const [sortBy, setSortBy] = useState<SortOption>('relevance')
   const [searchResults, setSearchResults] = useState<Paper[]>([])
   const [sourceErrors, setSourceErrors] = useState<Record<string, string>>({})
   const [selectedPaperKeys, setSelectedPaperKeys] = useState<string[]>([])
@@ -209,6 +212,9 @@ function App() {
         body: JSON.stringify({ title: 'New workspace' }),
       })
       setError('')
+      setEditingWorkspaceId(created.id)
+      setWorkspaceTitleDraft('')
+      setIsSidebarCollapsed(false)
       await loadWorkspaces(created.id)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Failed to create workspace.')
@@ -228,10 +234,11 @@ function App() {
   }
 
   async function renameWorkspace(workspaceId: number) {
+    const nextTitle = workspaceTitleDraft.trim() || 'New workspace'
     try {
       await requestJson<WorkspaceSummary>(`/api/workspaces/${workspaceId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ title: workspaceTitleDraft }),
+        body: JSON.stringify({ title: nextTitle }),
       })
       setEditingWorkspaceId(null)
       setWorkspaceTitleDraft('')
@@ -274,9 +281,13 @@ function App() {
     try {
       const payload = {
         query: effectiveQuery,
-        limit_per_source: 4,
+        limit_per_source: Number(limitPerSource) || 4,
         sources: enabledSources,
         workspace_id: activeWorkspaceId,
+        year_from: yearFrom ? Number(yearFrom) : null,
+        year_to: yearTo ? Number(yearTo) : null,
+        open_access_only: openAccessOnly,
+        sort_by: sortBy,
       }
       const response = await requestJson<SearchResponse>('/api/research/search', {
         method: 'POST',
@@ -284,7 +295,7 @@ function App() {
       })
       setQuery(effectiveQuery)
       setSearchResults(response.results)
-      setSourceErrors(response.source_errors)
+      setSourceErrors(response.source_errors ?? {})
       setSelectedPaperKeys([])
       await loadWorkspaceDetail(activeWorkspaceId)
       await loadWorkspaces(activeWorkspaceId)
@@ -432,101 +443,116 @@ function App() {
     setNotesDraft(event.target.value)
   }
 
+  const isBootstrapping = workspaces.length === 0 && activeWorkspaceId === null && !error
+
   return (
-    <main className="app-shell">
-      <aside className="sidebar">
+    <main className={`app-shell${isSidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+      <aside className={`sidebar${isSidebarCollapsed ? ' collapsed' : ''}`}>
         <div className="sidebar-top">
-          <div>
-            <p className="eyebrow">Research Companion Agent</p>
-            <h1>Publication workspace</h1>
-            <p className="intro">
-              Search across research APIs, collect papers into focused workspaces, and synthesize the literature you select.
-            </p>
+          <div className="sidebar-brand">
+            <div>
+              <p className="eyebrow">{isSidebarCollapsed ? 'RCA' : 'Research Companion Agent'}</p>
+              {!isSidebarCollapsed && <h1>Research desk</h1>}
+              {!isSidebarCollapsed && (
+                <p className="intro">
+                  Search publications, keep the strongest papers close, and turn a loose topic into a readable path.
+                </p>
+              )}
+            </div>
+            <button
+              aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              className="sidebar-toggle"
+              type="button"
+              onClick={() => setIsSidebarCollapsed((current) => !current)}
+            >
+              {isSidebarCollapsed ? '>' : '<'}
+            </button>
           </div>
 
           <section className="workspace-panel">
             <div className="section-header">
-              <p className="panel-label">Workspaces</p>
-              <button className="secondary-button" type="button" onClick={createWorkspace}>
-                New
+              {!isSidebarCollapsed && <p className="panel-label">Workspaces</p>}
+              <button
+                className={`secondary-button${isSidebarCollapsed ? ' icon-button' : ''}`}
+                title="Create workspace"
+                type="button"
+                onClick={createWorkspace}
+              >
+                {isSidebarCollapsed ? '+' : 'New'}
               </button>
             </div>
 
-            <div className="workspace-list">
-              {workspaces.map((workspace) => (
-                <article
-                  key={workspace.id}
-                  className={`workspace-card${workspace.id === activeWorkspaceId ? ' active' : ''}`}
-                  onClick={() => setActiveWorkspaceId(workspace.id)}
-                >
-                  {editingWorkspaceId === workspace.id ? (
-                    <input
-                      autoFocus
-                      className="workspace-input"
-                      onBlur={() => void renameWorkspace(workspace.id)}
-                      onChange={(event) => setWorkspaceTitleDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault()
-                          void renameWorkspace(workspace.id)
-                        }
-                        if (event.key === 'Escape') {
-                          setEditingWorkspaceId(null)
-                          setWorkspaceTitleDraft('')
-                        }
-                      }}
-                      value={workspaceTitleDraft}
-                    />
-                  ) : (
-                    <h2>{workspace.title}</h2>
-                  )}
-                  <p>{workspace.saved_paper_count} saved papers</p>
-                  <div className="workspace-actions">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        setEditingWorkspaceId(workspace.id)
-                        setWorkspaceTitleDraft(workspace.title)
-                      }}
+            {!isSidebarCollapsed && (
+              <div className="workspace-list">
+                {isBootstrapping ? (
+                  <article className="workspace-card active">
+                    <h2>Loading workspace...</h2>
+                    <p>Preparing your research desk.</p>
+                  </article>
+                ) : (
+                  workspaces.map((workspace) => (
+                    <article
+                      key={workspace.id}
+                      className={`workspace-card${workspace.id === activeWorkspaceId ? ' active' : ''}`}
+                      title={workspace.title}
+                      onClick={() => setActiveWorkspaceId(workspace.id)}
                     >
-                      Rename
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        void deleteWorkspace(workspace.id)
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
+                      {editingWorkspaceId === workspace.id ? (
+                        <input
+                          autoFocus
+                          className="workspace-input"
+                          onBlur={() => void renameWorkspace(workspace.id)}
+                          onChange={(event) => setWorkspaceTitleDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault()
+                              void renameWorkspace(workspace.id)
+                            }
+                          if (event.key === 'Escape') {
+                            setEditingWorkspaceId(null)
+                            setWorkspaceTitleDraft('')
+                          }
+                        }}
+                          placeholder="Name this workspace"
+                          value={workspaceTitleDraft}
+                        />
+                      ) : (
+                        <h2>{workspace.title}</h2>
+                      )}
+                      <p>{workspace.saved_paper_count} saved papers</p>
+                      <div className="workspace-actions">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setEditingWorkspaceId(workspace.id)
+                            setWorkspaceTitleDraft(workspace.title)
+                          }}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void deleteWorkspace(workspace.id)
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+            )}
           </section>
 
-          <section className="starter-panel">
-            <p className="panel-label">Starter queries</p>
-            <div className="starter-list">
-              {starterQueries.map((starter) => (
-                <button
-                  key={starter}
-                  className="starter-button"
-                  type="button"
-                  onClick={() => void onSearch(undefined, starter)}
-                >
-                  {starter}
-                </button>
-              ))}
-            </div>
-          </section>
         </div>
 
         <div className="status-panel">
           <span className="status-dot" />
-          <span>{isSearching || isSynthesizing ? 'Working through sources' : 'Ready to search'}</span>
+          {!isSidebarCollapsed && <span>{isSearching || isSynthesizing ? 'Working through sources' : 'Ready to search'}</span>}
         </div>
       </aside>
 
@@ -537,17 +563,29 @@ function App() {
               <p className="panel-label">Search</p>
               <h2 className="section-title">{activeWorkspace?.title ?? 'Loading workspace...'}</h2>
             </div>
+            <p className="section-kicker">Cross-source literature search</p>
           </div>
 
           <form className="search-form" onSubmit={(event) => void onSearch(event)}>
-            <textarea
+            <input
               aria-label="Search research publications"
               className="search-input"
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search for a method, topic, benchmark, or paper family..."
-              rows={3}
+              placeholder="Search for a topic, method, benchmark, or paper family"
               value={query}
             />
+            <div className="action-row">
+              <button className="primary-button" disabled={isSearching || !query.trim() || enabledSources.length === 0} type="submit">
+                {isSearching ? 'Searching' : 'Search publications'}
+              </button>
+              <button
+                className="ghost-button"
+                type="button"
+                onClick={() => setShowAdvancedSearch((current) => !current)}
+              >
+                {showAdvancedSearch ? 'Hide advanced search' : 'Advanced search'}
+              </button>
+            </div>
             <div className="source-row">
               {sourceOptions.map((option) => (
                 <label className={`source-chip${enabledSources.includes(option.key) ? ' active' : ''}`} key={option.key}>
@@ -560,16 +598,47 @@ function App() {
                 </label>
               ))}
             </div>
-            <div className="action-row">
-              <button className="primary-button" disabled={isSearching || !query.trim() || enabledSources.length === 0} type="submit">
-                {isSearching ? 'Searching' : 'Search publications'}
-              </button>
-            </div>
+            {showAdvancedSearch && (
+              <section className="advanced-search-panel">
+                <div className="advanced-grid">
+                  <label className="field">
+                    <span>Year from</span>
+                    <input value={yearFrom} onChange={(event) => setYearFrom(event.target.value)} placeholder="2019" />
+                  </label>
+                  <label className="field">
+                    <span>Year to</span>
+                    <input value={yearTo} onChange={(event) => setYearTo(event.target.value)} placeholder="2026" />
+                  </label>
+                  <label className="field">
+                    <span>Results per source</span>
+                    <select value={limitPerSource} onChange={(event) => setLimitPerSource(event.target.value)}>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                      <option value="5">5</option>
+                      <option value="7">7</option>
+                      <option value="10">10</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Sort by</span>
+                    <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortOption)}>
+                      <option value="relevance">Relevance</option>
+                      <option value="newest">Newest</option>
+                      <option value="most_cited">Most cited</option>
+                    </select>
+                  </label>
+                </div>
+                <label className="toggle-row">
+                  <input checked={openAccessOnly} onChange={(event) => setOpenAccessOnly(event.target.checked)} type="checkbox" />
+                  <span>Open access only</span>
+                </label>
+              </section>
+            )}
           </form>
 
-          {Object.keys(sourceErrors).length > 0 && (
+          {Object.keys(sourceErrors ?? {}).length > 0 && (
             <div className="error-box">
-              {Object.entries(sourceErrors).map(([source, message]) => (
+              {Object.entries(sourceErrors ?? {}).map(([source, message]) => (
                 <p key={source}>
                   <strong>{source}:</strong> {message}
                 </p>
@@ -585,54 +654,63 @@ function App() {
               <span className="panel-meta">{searchResults.length} papers</span>
             </div>
             <div className="card-list">
-              {searchResults.map((paper) => {
-                const key = paperKey(paper)
-                const isSelected = selectedPaperKeys.includes(key)
-                const isSaved = savedPaperKeys.has(key)
+              {searchResults.length === 0 ? (
+                <article className="empty-card">
+                  <p className="empty-card-title">No papers yet</p>
+                  <p className="empty-state">
+                    Run a search to pull in papers from the sources you selected. This column becomes your working stack.
+                  </p>
+                </article>
+              ) : (
+                searchResults.map((paper) => {
+                  const key = paperKey(paper)
+                  const isSelected = selectedPaperKeys.includes(key)
+                  const isSaved = savedPaperKeys.has(key)
 
-                return (
-                  <article className={`paper-card${isSelected ? ' selected' : ''}`} key={key}>
-                    <div className="paper-card-header">
-                      <label className="checkbox-row">
-                        <input checked={isSelected} onChange={() => togglePaperSelection(paper)} type="checkbox" />
-                        <span>Select</span>
-                      </label>
-                      <span className="source-tag">{paper.source}</span>
-                    </div>
-                    <h3>{paper.title}</h3>
-                    <p className="paper-meta">
-                      {paper.authors.slice(0, 4).join(', ') || 'Unknown authors'}
-                      {paper.year ? ` · ${paper.year}` : ''}
-                      {paper.venue ? ` · ${paper.venue}` : ''}
-                    </p>
-                    <div className="paper-badges">
-                      {paper.citation_count !== null && <span className="paper-badge">{paper.citation_count} citations</span>}
-                      {paper.open_access && <span className="paper-badge">Open access</span>}
-                      {paper.doi && <span className="paper-badge">DOI</span>}
-                    </div>
-                    <p className="paper-abstract">{paper.abstract || 'No abstract available.'}</p>
-                    <div className="paper-actions">
-                      <button type="button" onClick={() => void savePaperToWorkspace(paper)} disabled={isSaved}>
-                        {isSaved ? 'Saved' : 'Save'}
-                      </button>
-                      {paper.url && (
-                        <a href={paper.url} rel="noreferrer" target="_blank">
-                          Open
-                        </a>
-                      )}
-                      {paper.pdf_url && (
-                        <a href={paper.pdf_url} rel="noreferrer" target="_blank">
-                          PDF
-                        </a>
-                      )}
-                    </div>
-                  </article>
-                )
-              })}
+                  return (
+                    <article className={`paper-card${isSelected ? ' selected' : ''}`} key={key}>
+                      <div className="paper-card-header">
+                        <label className="checkbox-row">
+                          <input checked={isSelected} onChange={() => togglePaperSelection(paper)} type="checkbox" />
+                          <span>Select</span>
+                        </label>
+                        <span className="source-tag">{paper.source}</span>
+                      </div>
+                      <h3>{paper.title}</h3>
+                      <p className="paper-meta">
+                        {paper.authors.slice(0, 4).join(', ') || 'Unknown authors'}
+                        {paper.year ? ` · ${paper.year}` : ''}
+                        {paper.venue ? ` · ${paper.venue}` : ''}
+                      </p>
+                      <div className="paper-badges">
+                        {paper.citation_count !== null && <span className="paper-badge">{paper.citation_count} citations</span>}
+                        {paper.open_access && <span className="paper-badge">Open access</span>}
+                        {paper.doi && <span className="paper-badge">DOI</span>}
+                      </div>
+                      <p className="paper-abstract">{paper.abstract || 'No abstract available.'}</p>
+                      <div className="paper-actions">
+                        <button type="button" onClick={() => void savePaperToWorkspace(paper)} disabled={isSaved}>
+                          {isSaved ? 'Saved' : 'Save'}
+                        </button>
+                        {paper.url && (
+                          <a href={paper.url} rel="noreferrer" target="_blank">
+                            Open
+                          </a>
+                        )}
+                        {paper.pdf_url && (
+                          <a href={paper.pdf_url} rel="noreferrer" target="_blank">
+                            PDF
+                          </a>
+                        )}
+                      </div>
+                    </article>
+                  )
+                })
+              )}
             </div>
           </div>
 
-          <div className="workspace-detail-panel">
+          <aside className="workspace-detail-panel">
             <section className="detail-section selected-tray">
               <div className="section-header">
                 <p className="panel-label">Selected papers</p>
@@ -668,35 +746,39 @@ function App() {
             <section className="detail-section">
               <div className="section-header">
                 <p className="panel-label">Saved papers</p>
-                <span className="panel-meta">{workspaceDetail?.saved_papers.length ?? 0}</span>
+                <span className="panel-meta">{workspaceDetail?.saved_papers?.length ?? 0}</span>
               </div>
               <div className="card-list compact">
-                {(workspaceDetail?.saved_papers ?? []).map((paper) => {
-                  const key = paperKey(paper)
-                  return (
-                    <article className={`paper-card compact${selectedPaperKeys.includes(key) ? ' selected' : ''}`} key={key}>
-                      <div className="paper-card-header">
-                        <label className="checkbox-row">
-                          <input checked={selectedPaperKeys.includes(key)} onChange={() => togglePaperSelection(paper)} type="checkbox" />
-                          <span>Select</span>
-                        </label>
-                        <span className="source-tag">{paper.source}</span>
-                      </div>
-                      <h3>{paper.title}</h3>
-                      <p className="paper-meta">{paper.year ? `${paper.year}` : 'Year unknown'}{paper.venue ? ` · ${paper.venue}` : ''}</p>
-                      <div className="paper-actions">
-                        <button type="button" onClick={() => void removePaperFromWorkspace(paper)}>
-                          Remove
-                        </button>
-                        {paper.url && (
-                          <a href={paper.url} rel="noreferrer" target="_blank">
-                            Open
-                          </a>
-                        )}
-                      </div>
-                    </article>
-                  )
-                })}
+                {(workspaceDetail?.saved_papers ?? []).length === 0 ? (
+                  <p className="empty-state">Saved papers will appear here once you pin strong results into this workspace.</p>
+                ) : (
+                  (workspaceDetail?.saved_papers ?? []).map((paper) => {
+                    const key = paperKey(paper)
+                    return (
+                      <article className={`paper-card compact${selectedPaperKeys.includes(key) ? ' selected' : ''}`} key={key}>
+                        <div className="paper-card-header">
+                          <label className="checkbox-row">
+                            <input checked={selectedPaperKeys.includes(key)} onChange={() => togglePaperSelection(paper)} type="checkbox" />
+                            <span>Select</span>
+                          </label>
+                          <span className="source-tag">{paper.source}</span>
+                        </div>
+                        <h3>{paper.title}</h3>
+                        <p className="paper-meta">{paper.year ? `${paper.year}` : 'Year unknown'}{paper.venue ? ` · ${paper.venue}` : ''}</p>
+                        <div className="paper-actions">
+                          <button type="button" onClick={() => void removePaperFromWorkspace(paper)}>
+                            Remove
+                          </button>
+                          {paper.url && (
+                            <a href={paper.url} rel="noreferrer" target="_blank">
+                              Open
+                            </a>
+                          )}
+                        </div>
+                      </article>
+                    )
+                  })
+                )}
               </div>
             </section>
 
@@ -774,29 +856,33 @@ function App() {
                 <p className="panel-label">Recent searches</p>
               </div>
               <div className="history-list">
-                {(workspaceDetail?.searches ?? []).slice(0, 8).map((search) => (
-                  <button
-                    key={search.id}
-                    className="history-card"
-                    type="button"
-                    onClick={() => {
-                      setQuery(search.query)
-                      setEnabledSources(
-                        sourceOptions
-                          .map((option) => option.key)
-                          .filter((source): source is SourceKey => search.sources.includes(source)),
-                      )
-                    }}
-                  >
-                    <strong>{search.query}</strong>
-                    <span>
-                      {search.result_count} results · {search.sources.join(', ')}
-                    </span>
-                  </button>
-                ))}
+                {(workspaceDetail?.searches ?? []).length === 0 ? (
+                  <p className="empty-state">Search history will collect here as you explore this workspace.</p>
+                ) : (
+                  (workspaceDetail?.searches ?? []).slice(0, 8).map((search) => (
+                    <button
+                      key={search.id}
+                      className="history-card"
+                      type="button"
+                      onClick={() => {
+                        setQuery(search.query)
+                        setEnabledSources(
+                          sourceOptions
+                            .map((option) => option.key)
+                            .filter((source): source is SourceKey => search.sources.includes(source)),
+                        )
+                      }}
+                    >
+                      <strong>{search.query}</strong>
+                      <span>
+                        {search.result_count} results · {search.sources.join(', ')}
+                      </span>
+                    </button>
+                  ))
+                )}
               </div>
             </section>
-          </div>
+          </aside>
         </section>
 
         {error && <p className="global-error">{error}</p>}

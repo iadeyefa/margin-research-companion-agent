@@ -20,11 +20,6 @@ Create `backend/.env` if you need to override defaults:
 ```bash
 DATABASE_URL=postgresql+psycopg://postgres:password@localhost:5433/research_companion
 REDIS_URL=redis://localhost:6379
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=mistral
-EMBEDDINGS_MODEL=sentence-transformers/all-MiniLM-L6-v2
-PINECONE_API_KEY=your_key_here
-PINECONE_INDEX_NAME=research-companion
 CEREBRAS_API_KEY=your_key_here
 CEREBRAS_MODEL=llama3.1-8b
 JWT_SECRET=dev-secret
@@ -52,6 +47,8 @@ DATABASE_URL=postgresql+psycopg://postgres:password@localhost:5433/research_comp
 ```
 
 API docs are available at `http://localhost:3000/docs`.
+
+There is no Pinecone or sports-ingestion dependency in the active research companion app anymore.
 
 ## Research Companion Search
 
