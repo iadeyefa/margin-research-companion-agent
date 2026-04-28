@@ -176,11 +176,20 @@ export function SearchTab() {
 
       {Object.keys(sourceErrors).length > 0 && (
         <section className="surface error-surface">
-          {Object.entries(sourceErrors).map(([source, message]) => (
-            <p key={source}>
-              <strong>{source}:</strong> {message}
-            </p>
-          ))}
+          <p className="surface-eyebrow">Some sources had issues</p>
+          {Object.entries(sourceErrors).map(([source, message]) => {
+            const cleanedMessage = message.replace(/https?:\/\/\S+/g, '').replace(/\s+/g, ' ').trim()
+            const sourceLabel = SOURCE_OPTIONS.find((option) => option.key === source)?.label ?? source
+            const isRateLimit = /\b429\b|rate ?limit/i.test(cleanedMessage)
+            return (
+              <p key={source}>
+                <strong>{sourceLabel}:</strong>{' '}
+                {isRateLimit
+                  ? 'rate limit reached — try again in a moment, or deselect this source.'
+                  : cleanedMessage || 'request failed.'}
+              </p>
+            )
+          })}
         </section>
       )}
 
