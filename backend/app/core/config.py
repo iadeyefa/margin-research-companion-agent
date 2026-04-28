@@ -4,17 +4,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    database_url: str = "sqlite:///./sports_agent.db"
+    database_url: str = "sqlite:///./research_companion.db"
     redis_url: str = "redis://localhost:6379"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "mistral"
     embeddings_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     pinecone_api_key: str = ""
-    pinecone_index_name: str = "sports-analysis"
+    pinecone_index_name: str = "research-companion"
     cerebras_api_key: str = ""
     cerebras_model: str = "llama3.1-8b"
-    current_nba_season: str = "2025-26"
-    current_nba_season_year: int = 2026
+    research_contact_email: str = ""
+    semantic_scholar_api_key: str = ""
+    openalex_api_key: str = ""
     jwt_secret: str = "dev-secret"
     port: int = 3000
     node_env: str = "development"

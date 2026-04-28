@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import chat, games, health, teams
+from app.api import health, research, workspaces
 from app.core.config import get_settings
 from app.db.base import Base
 from app.db.session import engine
@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Sports Analysis Agent API", lifespan=lifespan)
+app = FastAPI(title="Research Companion Agent API", lifespan=lifespan)
 
 origins = (
     [
@@ -40,6 +40,5 @@ app.add_middleware(
 )
 
 app.include_router(health.router, prefix="/api")
-app.include_router(chat.router, prefix="/api")
-app.include_router(teams.router, prefix="/api")
-app.include_router(games.router, prefix="/api")
+app.include_router(research.router, prefix="/api")
+app.include_router(workspaces.router, prefix="/api")

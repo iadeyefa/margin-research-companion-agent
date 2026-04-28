@@ -1,338 +1,630 @@
-import { startTransition, useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type { ChangeEvent, FormEvent } from 'react'
 import './App.css'
 
-type Message = {
-  id: string
-  role: 'user' | 'assistant'
-  text: string
+type SourceKey = 'crossref' | 'semantic_scholar' | 'openalex' | 'pubmed' | 'arxiv'
+
+type Paper = {
+  source: string
+  external_id: string
+  title: string
+  abstract: string | null
+  authors: string[]
+  venue: string | null
+  year: number | null
+  publication_date: string | null
+  doi: string | null
+  url: string | null
+  pdf_url: string | null
+  citation_count: number | null
+  open_access: boolean | null
 }
 
-type ChatThread = {
-  id: string
+type SearchResponse = {
+  query: string
+  results: Paper[]
+  source_errors: Record<string, string>
+}
+
+type ExportResponse = {
+  format: string
+  content: string
+}
+
+type ReadingPathStep = {
+  order: number
   title: string
-  messages: Message[]
-  createdAt: string
-  updatedAt: string
+  source: string
+  external_id: string
+  rationale: string
+}
+
+type ReadingPathResponse = {
+  objective: string
+  overview: string
+  steps: ReadingPathStep[]
+}
+
+type SearchHistory = {
+  id: number
+  query: string
+  sources: string[]
+  result_count: number
+  created_at: string
+}
+
+type WorkspaceSummary = {
+  id: number
+  title: string
+  notes: string
+  saved_paper_count: number
+  search_count: number
+  created_at: string
+  updated_at: string
+}
+
+type WorkspaceDetail = WorkspaceSummary & {
+  saved_papers: Paper[]
+  searches: SearchHistory[]
 }
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
-const STORAGE_KEY = 'sports-analysis-chat-threads'
-const ACTIVE_THREAD_KEY = 'sports-analysis-active-thread'
 
-const examples = [
-  'How did the Timberwolves perform against the Nuggets?',
-  'Which teams struggled with three-point shooting in playoff games?',
-  'Who looks strongest in the current NBA playoffs based on recent data?',
+const sourceOptions: Array<{ key: SourceKey; label: string }> = [
+  { key: 'semantic_scholar', label: 'Semantic Scholar' },
+  { key: 'openalex', label: 'OpenAlex' },
+  { key: 'crossref', label: 'Crossref' },
+  { key: 'pubmed', label: 'PubMed' },
+  { key: 'arxiv', label: 'arXiv' },
 ]
 
-function createWelcomeMessage(): Message {
-  return {
-    id: crypto.randomUUID(),
-    role: 'assistant',
-    text: 'Ask a question about the NBA data you ingested into Pinecone.',
+const starterQueries = [
+  'retrieval augmented generation for scientific search',
+  'LLM evaluation benchmarks 2024 2025',
+  'chain-of-thought prompting tool use papers',
+]
+
+const paperKey = (paper: Paper) => `${paper.source}::${paper.external_id}`
+
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers ?? {}),
+    },
+    ...init,
+  })
+
+  if (!response.ok) {
+    const message = await response.text()
+    throw new Error(message || `Request failed with status ${response.status}`)
   }
-}
 
-function createThread(title = 'New chat'): ChatThread {
-  const now = new Date().toISOString()
-  return {
-    id: crypto.randomUUID(),
-    title,
-    messages: [createWelcomeMessage()],
-    createdAt: now,
-    updatedAt: now,
-  }
-}
-
-function isChatThread(value: unknown): value is ChatThread {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as ChatThread
-  return (
-    typeof candidate.id === 'string' &&
-    typeof candidate.title === 'string' &&
-    Array.isArray(candidate.messages) &&
-    typeof candidate.createdAt === 'string' &&
-    typeof candidate.updatedAt === 'string'
-  )
-}
-
-function loadThreads(): ChatThread[] {
-  if (typeof window === 'undefined') return [createThread()]
-
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return [createThread()]
-
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return [createThread()]
-
-    const threads = parsed.filter(isChatThread)
-    return threads.length > 0 ? threads : [createThread()]
-  } catch {
-    return [createThread()]
-  }
-}
-
-function loadActiveThreadId(threads: ChatThread[]): string {
-  if (typeof window === 'undefined') return threads[0].id
-
-  const stored = window.localStorage.getItem(ACTIVE_THREAD_KEY)
-  return threads.some((thread) => thread.id === stored) ? (stored as string) : threads[0].id
-}
-
-function summarizeTitle(question: string): string {
-  const trimmed = question.trim()
-  if (trimmed.length <= 42) return trimmed
-  return `${trimmed.slice(0, 39).trimEnd()}...`
+  return response.json() as Promise<T>
 }
 
 function App() {
-  const [threads, setThreads] = useState<ChatThread[]>(() => loadThreads())
-  const [activeThreadId, setActiveThreadId] = useState<string>(() => loadActiveThreadId(loadThreads()))
-  const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<number | null>(null)
+  const [workspaceDetail, setWorkspaceDetail] = useState<WorkspaceDetail | null>(null)
+  const [query, setQuery] = useState('')
+  const [enabledSources, setEnabledSources] = useState<SourceKey[]>(sourceOptions.map((option) => option.key))
+  const [searchResults, setSearchResults] = useState<Paper[]>([])
+  const [sourceErrors, setSourceErrors] = useState<Record<string, string>>({})
+  const [selectedPaperKeys, setSelectedPaperKeys] = useState<string[]>([])
+  const [synthesisQuestion, setSynthesisQuestion] = useState('')
+  const [readingObjective, setReadingObjective] = useState('')
+  const [synthesisOutput, setSynthesisOutput] = useState('')
+  const [readingPath, setReadingPath] = useState<ReadingPathResponse | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
+  const [isSynthesizing, setIsSynthesizing] = useState(false)
+  const [isBuildingReadingPath, setIsBuildingReadingPath] = useState(false)
+  const [isSavingNotes, setIsSavingNotes] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [notesDraft, setNotesDraft] = useState('')
   const [error, setError] = useState('')
-  const [editingThreadId, setEditingThreadId] = useState<string | null>(null)
-  const [draftTitle, setDraftTitle] = useState('')
+  const [editingWorkspaceId, setEditingWorkspaceId] = useState<number | null>(null)
+  const [workspaceTitleDraft, setWorkspaceTitleDraft] = useState('')
 
-  const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? threads[0]
-  const canSend = input.trim().length > 0 && !isLoading
+  const activeWorkspace = useMemo(
+    () => workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null,
+    [activeWorkspaceId, workspaces],
+  )
+
+  const allVisiblePapers = useMemo(() => {
+    const merged = new Map<string, Paper>()
+    for (const paper of workspaceDetail?.saved_papers ?? []) {
+      merged.set(paperKey(paper), paper)
+    }
+    for (const paper of searchResults) {
+      merged.set(paperKey(paper), paper)
+    }
+    return merged
+  }, [searchResults, workspaceDetail?.saved_papers])
+
+  const selectedPapers = useMemo(
+    () => selectedPaperKeys.map((key) => allVisiblePapers.get(key)).filter(Boolean) as Paper[],
+    [allVisiblePapers, selectedPaperKeys],
+  )
+
+  const savedPaperKeys = useMemo(
+    () => new Set((workspaceDetail?.saved_papers ?? []).map((paper) => paperKey(paper))),
+    [workspaceDetail?.saved_papers],
+  )
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(threads))
-  }, [threads])
+    void loadWorkspaces()
+  }, [])
 
   useEffect(() => {
-    if (!activeThread) return
-    window.localStorage.setItem(ACTIVE_THREAD_KEY, activeThread.id)
-  }, [activeThread])
+    if (activeWorkspaceId !== null) {
+      void loadWorkspaceDetail(activeWorkspaceId)
+    }
+  }, [activeWorkspaceId])
 
-  const updateThread = (threadId: string, updater: (thread: ChatThread) => ChatThread) => {
-    startTransition(() => {
-      setThreads((current) => current.map((thread) => (thread.id === threadId ? updater(thread) : thread)))
-    })
-  }
+  useEffect(() => {
+    setNotesDraft(workspaceDetail?.notes ?? '')
+  }, [workspaceDetail?.notes, workspaceDetail?.id])
 
-  const createNewThread = () => {
-    const nextThread = createThread()
-    setThreads((current) => [nextThread, ...current])
-    setActiveThreadId(nextThread.id)
-    setEditingThreadId(null)
-    setDraftTitle('')
-    setError('')
-    setInput('')
-  }
-
-  const beginRenameThread = (thread: ChatThread) => {
-    setEditingThreadId(thread.id)
-    setDraftTitle(thread.title)
-  }
-
-  const commitRenameThread = (threadId: string) => {
-    const nextTitle = draftTitle.trim() || 'New chat'
-    updateThread(threadId, (thread) => ({
-      ...thread,
-      title: nextTitle,
-      updatedAt: new Date().toISOString(),
-    }))
-    setEditingThreadId(null)
-    setDraftTitle('')
-  }
-
-  const deleteThread = (threadId: string) => {
-    setThreads((current) => {
-      if (current.length === 1) {
-        const freshThread = createThread()
-        setActiveThreadId(freshThread.id)
-        return [freshThread]
-      }
-
-      const remaining = current.filter((thread) => thread.id !== threadId)
-      if (activeThreadId === threadId) {
-        setActiveThreadId(remaining[0].id)
-      }
-      return remaining
-    })
-    setEditingThreadId(null)
-    setDraftTitle('')
-    setError('')
-  }
-
-  const sendMessage = async (prompt: string) => {
-    const question = prompt.trim()
-    if (!question || isLoading || !activeThread) return
-
-    const assistantId = crypto.randomUUID()
-    const threadId = activeThread.id
-    const nextUpdatedAt = new Date().toISOString()
-
-    setError('')
-    setInput('')
-    setIsLoading(true)
-    updateThread(threadId, (thread) => ({
-      ...thread,
-      title: thread.title === 'New chat' ? summarizeTitle(question) : thread.title,
-      updatedAt: nextUpdatedAt,
-      messages: [
-        ...thread.messages,
-        { id: crypto.randomUUID(), role: 'user', text: question },
-        { id: assistantId, role: 'assistant', text: '' },
-      ],
-    }))
-
+  async function loadWorkspaces(nextActiveWorkspaceId?: number) {
     try {
-      const response = await fetch(`${API_URL}/api/chat/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: question, userId: 1 }),
-      })
+      const data = await requestJson<WorkspaceSummary[]>('/api/workspaces/')
+      setWorkspaces(data)
 
-      if (!response.ok || !response.body) {
-        throw new Error(`Chat request failed with status ${response.status}`)
+      if (data.length === 0) {
+        const created = await requestJson<WorkspaceDetail>('/api/workspaces/', {
+          method: 'POST',
+          body: JSON.stringify({ title: 'New workspace' }),
+        })
+        setWorkspaces([created])
+        setActiveWorkspaceId(created.id)
+        setWorkspaceDetail(created)
+        return
       }
 
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const events = buffer.split('\n\n')
-        buffer = events.pop() ?? ''
-
-        for (const event of events) {
-          const line = event
-            .split('\n')
-            .find((item) => item.startsWith('data: '))
-
-          if (!line) continue
-
-          const data = line.slice(6)
-          if (data === '[DONE]') {
-            setIsLoading(false)
-            continue
-          }
-
-          const parsed = JSON.parse(data)
-          if (parsed.error) {
-            throw new Error(parsed.error)
-          }
-
-          if (parsed.text) {
-            updateThread(threadId, (thread) => ({
-              ...thread,
-              updatedAt: new Date().toISOString(),
-              messages: thread.messages.map((message) =>
-                message.id === assistantId
-                  ? { ...message, text: `${message.text}${parsed.text}` }
-                  : message,
-              ),
-            }))
-          }
-        }
-      }
+      const targetId =
+        nextActiveWorkspaceId ??
+        (activeWorkspaceId !== null && data.some((workspace) => workspace.id === activeWorkspaceId)
+          ? activeWorkspaceId
+          : data[0].id)
+      setActiveWorkspaceId(targetId)
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Something went wrong.'
-      setError(message)
-      updateThread(threadId, (thread) => ({
-        ...thread,
-        updatedAt: new Date().toISOString(),
-        messages: thread.messages.map((message) =>
-          message.id === assistantId
-            ? { ...message, text: `I could not reach the chat endpoint. Check that FastAPI is running at ${API_URL}.` }
-            : message,
-        ),
-      }))
-    } finally {
-      setIsLoading(false)
+      setError(caught instanceof Error ? caught.message : 'Failed to load workspaces.')
     }
   }
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    void sendMessage(input)
+  async function loadWorkspaceDetail(workspaceId: number) {
+    try {
+      const data = await requestJson<WorkspaceDetail>(`/api/workspaces/${workspaceId}`)
+      setWorkspaceDetail(data)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to load workspace detail.')
+    }
+  }
+
+  async function createWorkspace() {
+    try {
+      const created = await requestJson<WorkspaceDetail>('/api/workspaces/', {
+        method: 'POST',
+        body: JSON.stringify({ title: 'New workspace' }),
+      })
+      setError('')
+      await loadWorkspaces(created.id)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to create workspace.')
+    }
+  }
+
+  async function deleteWorkspace(workspaceId: number) {
+    try {
+      await requestJson(`/api/workspaces/${workspaceId}`, { method: 'DELETE' })
+      setSearchResults([])
+      setSelectedPaperKeys([])
+      setSynthesisOutput('')
+      await loadWorkspaces()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to delete workspace.')
+    }
+  }
+
+  async function renameWorkspace(workspaceId: number) {
+    try {
+      await requestJson<WorkspaceSummary>(`/api/workspaces/${workspaceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ title: workspaceTitleDraft }),
+      })
+      setEditingWorkspaceId(null)
+      setWorkspaceTitleDraft('')
+      await loadWorkspaces(workspaceId)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to rename workspace.')
+    }
+  }
+
+  async function saveNotes() {
+    if (!workspaceDetail) return
+    setIsSavingNotes(true)
+    try {
+      const updated = await requestJson<WorkspaceSummary>(`/api/workspaces/${workspaceDetail.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ notes: notesDraft }),
+      })
+      setWorkspaceDetail((current) => (current ? { ...current, notes: updated.notes, updated_at: updated.updated_at } : current))
+      setWorkspaces((current) =>
+        current.map((workspace) => (workspace.id === updated.id ? updated : workspace)),
+      )
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to save notes.')
+    } finally {
+      setIsSavingNotes(false)
+    }
+  }
+
+  async function onSearch(event?: FormEvent, nextQuery?: string) {
+    event?.preventDefault()
+    const effectiveQuery = (nextQuery ?? query).trim()
+    if (!effectiveQuery || activeWorkspaceId === null || enabledSources.length === 0) return
+
+    setIsSearching(true)
+    setError('')
+    setSourceErrors({})
+    setSynthesisOutput('')
+    setReadingPath(null)
+
+    try {
+      const payload = {
+        query: effectiveQuery,
+        limit_per_source: 4,
+        sources: enabledSources,
+        workspace_id: activeWorkspaceId,
+      }
+      const response = await requestJson<SearchResponse>('/api/research/search', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+      setQuery(effectiveQuery)
+      setSearchResults(response.results)
+      setSourceErrors(response.source_errors)
+      setSelectedPaperKeys([])
+      await loadWorkspaceDetail(activeWorkspaceId)
+      await loadWorkspaces(activeWorkspaceId)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Search failed.')
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  async function savePaperToWorkspace(paper: Paper) {
+    if (!workspaceDetail) return
+    try {
+      await requestJson(`/api/workspaces/${workspaceDetail.id}/papers`, {
+        method: 'POST',
+        body: JSON.stringify(paper),
+      })
+      await loadWorkspaceDetail(workspaceDetail.id)
+      await loadWorkspaces(workspaceDetail.id)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to save paper.')
+    }
+  }
+
+  async function removePaperFromWorkspace(paper: Paper) {
+    if (!workspaceDetail) return
+    try {
+      await requestJson(
+        `/api/workspaces/${workspaceDetail.id}/papers/${encodeURIComponent(paper.source)}/${encodeURIComponent(paper.external_id)}`,
+        { method: 'DELETE' },
+      )
+      setSelectedPaperKeys((current) => current.filter((key) => key !== paperKey(paper)))
+      await loadWorkspaceDetail(workspaceDetail.id)
+      await loadWorkspaces(workspaceDetail.id)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to remove paper.')
+    }
+  }
+
+  async function runSynthesis(mode: 'summary' | 'compare' | 'question') {
+    if (selectedPapers.length === 0) {
+      setError('Select at least one paper first.')
+      return
+    }
+
+    if (mode === 'compare' && selectedPapers.length < 2) {
+      setError('Select at least two papers to compare.')
+      return
+    }
+
+    if (mode === 'question' && !synthesisQuestion.trim()) {
+      setError('Enter a question for the selected papers.')
+      return
+    }
+
+    setIsSynthesizing(true)
+    setError('')
+
+    try {
+      const response = await requestJson<{ response: string }>('/api/research/synthesize', {
+        method: 'POST',
+        body: JSON.stringify({
+          mode,
+          question: mode === 'question' ? synthesisQuestion.trim() : null,
+          papers: selectedPapers,
+        }),
+      })
+      setSynthesisOutput(response.response)
+      setReadingPath(null)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to synthesize papers.')
+    } finally {
+      setIsSynthesizing(false)
+    }
+  }
+
+  async function buildReadingPath() {
+    if (selectedPapers.length === 0) {
+      setError('Select at least one paper first.')
+      return
+    }
+
+    setIsBuildingReadingPath(true)
+    setError('')
+
+    try {
+      const response = await requestJson<ReadingPathResponse>('/api/research/reading-path', {
+        method: 'POST',
+        body: JSON.stringify({
+          objective: readingObjective.trim() || null,
+          papers: selectedPapers,
+        }),
+      })
+      setReadingPath(response)
+      setSynthesisOutput('')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to build reading path.')
+    } finally {
+      setIsBuildingReadingPath(false)
+    }
+  }
+
+  async function exportSelectedPapers(format: 'bibtex' | 'markdown') {
+    if (selectedPapers.length === 0) {
+      setError('Select at least one paper to export.')
+      return
+    }
+
+    setIsExporting(true)
+    setError('')
+
+    try {
+      const response = await requestJson<ExportResponse>('/api/research/export', {
+        method: 'POST',
+        body: JSON.stringify({
+          format,
+          papers: selectedPapers,
+        }),
+      })
+      await navigator.clipboard.writeText(response.content)
+      setSynthesisOutput(
+        `${format === 'bibtex' ? 'BibTeX' : 'Markdown'} export copied to your clipboard for ${selectedPapers.length} selected papers.`,
+      )
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to export papers.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  function toggleSource(source: SourceKey) {
+    setEnabledSources((current) =>
+      current.includes(source) ? current.filter((item) => item !== source) : [...current, source],
+    )
+  }
+
+  function togglePaperSelection(paper: Paper) {
+    const key = paperKey(paper)
+    setSelectedPaperKeys((current) =>
+      current.includes(key) ? current.filter((item) => item !== key) : [...current, key],
+    )
+  }
+
+  function handleNotesChange(event: ChangeEvent<HTMLTextAreaElement>) {
+    setNotesDraft(event.target.value)
   }
 
   return (
     <main className="app-shell">
-      <section className="sidebar">
+      <aside className="sidebar">
         <div className="sidebar-top">
           <div>
-            <p className="eyebrow">Sports Analysis Agent</p>
-            <h1>NBA data chat</h1>
+            <p className="eyebrow">Research Companion Agent</p>
+            <h1>Publication workspace</h1>
             <p className="intro">
-              Query your Pinecone index, compare teams, and keep separate chat threads for different lines of analysis.
+              Search across research APIs, collect papers into focused workspaces, and synthesize the literature you select.
             </p>
           </div>
 
-          <div className="thread-panel">
-            <div className="thread-panel-header">
-              <p className="panel-label">Chats</p>
-              <button className="new-thread-button" type="button" onClick={createNewThread}>
-                New chat
+          <section className="workspace-panel">
+            <div className="section-header">
+              <p className="panel-label">Workspaces</p>
+              <button className="secondary-button" type="button" onClick={createWorkspace}>
+                New
               </button>
             </div>
 
-            <div className="thread-list" aria-label="Chat threads">
-              {threads.map((thread) => {
-                const isActive = thread.id === activeThread.id
-                const isEditing = thread.id === editingThreadId
+            <div className="workspace-list">
+              {workspaces.map((workspace) => (
+                <article
+                  key={workspace.id}
+                  className={`workspace-card${workspace.id === activeWorkspaceId ? ' active' : ''}`}
+                  onClick={() => setActiveWorkspaceId(workspace.id)}
+                >
+                  {editingWorkspaceId === workspace.id ? (
+                    <input
+                      autoFocus
+                      className="workspace-input"
+                      onBlur={() => void renameWorkspace(workspace.id)}
+                      onChange={(event) => setWorkspaceTitleDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          void renameWorkspace(workspace.id)
+                        }
+                        if (event.key === 'Escape') {
+                          setEditingWorkspaceId(null)
+                          setWorkspaceTitleDraft('')
+                        }
+                      }}
+                      value={workspaceTitleDraft}
+                    />
+                  ) : (
+                    <h2>{workspace.title}</h2>
+                  )}
+                  <p>{workspace.saved_paper_count} saved papers</p>
+                  <div className="workspace-actions">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setEditingWorkspaceId(workspace.id)
+                        setWorkspaceTitleDraft(workspace.title)
+                      }}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        void deleteWorkspace(workspace.id)
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="starter-panel">
+            <p className="panel-label">Starter queries</p>
+            <div className="starter-list">
+              {starterQueries.map((starter) => (
+                <button
+                  key={starter}
+                  className="starter-button"
+                  type="button"
+                  onClick={() => void onSearch(undefined, starter)}
+                >
+                  {starter}
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div className="status-panel">
+          <span className="status-dot" />
+          <span>{isSearching || isSynthesizing ? 'Working through sources' : 'Ready to search'}</span>
+        </div>
+      </aside>
+
+      <section className="main-panel">
+        <section className="search-panel">
+          <div className="section-header">
+            <div>
+              <p className="panel-label">Search</p>
+              <h2 className="section-title">{activeWorkspace?.title ?? 'Loading workspace...'}</h2>
+            </div>
+          </div>
+
+          <form className="search-form" onSubmit={(event) => void onSearch(event)}>
+            <textarea
+              aria-label="Search research publications"
+              className="search-input"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search for a method, topic, benchmark, or paper family..."
+              rows={3}
+              value={query}
+            />
+            <div className="source-row">
+              {sourceOptions.map((option) => (
+                <label className={`source-chip${enabledSources.includes(option.key) ? ' active' : ''}`} key={option.key}>
+                  <input
+                    checked={enabledSources.includes(option.key)}
+                    onChange={() => toggleSource(option.key)}
+                    type="checkbox"
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="action-row">
+              <button className="primary-button" disabled={isSearching || !query.trim() || enabledSources.length === 0} type="submit">
+                {isSearching ? 'Searching' : 'Search publications'}
+              </button>
+            </div>
+          </form>
+
+          {Object.keys(sourceErrors).length > 0 && (
+            <div className="error-box">
+              {Object.entries(sourceErrors).map(([source, message]) => (
+                <p key={source}>
+                  <strong>{source}:</strong> {message}
+                </p>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="content-grid">
+          <div className="results-panel">
+            <div className="section-header">
+              <p className="panel-label">Results</p>
+              <span className="panel-meta">{searchResults.length} papers</span>
+            </div>
+            <div className="card-list">
+              {searchResults.map((paper) => {
+                const key = paperKey(paper)
+                const isSelected = selectedPaperKeys.includes(key)
+                const isSaved = savedPaperKeys.has(key)
 
                 return (
-                  <article
-                    key={thread.id}
-                    className={`thread-card${isActive ? ' active' : ''}`}
-                    onClick={() => setActiveThreadId(thread.id)}
-                  >
-                    <div className="thread-card-main">
-                      {isEditing ? (
-                        <input
-                          aria-label="Rename chat"
-                          autoFocus
-                          className="thread-title-input"
-                          onBlur={() => commitRenameThread(thread.id)}
-                          onChange={(event) => setDraftTitle(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                              event.preventDefault()
-                              commitRenameThread(thread.id)
-                            }
-                            if (event.key === 'Escape') {
-                              setEditingThreadId(null)
-                              setDraftTitle('')
-                            }
-                          }}
-                          value={draftTitle}
-                        />
-                      ) : (
-                        <h2>{thread.title}</h2>
-                      )}
-                      <p>{thread.messages.filter((message) => message.role === 'user').length} prompts</p>
+                  <article className={`paper-card${isSelected ? ' selected' : ''}`} key={key}>
+                    <div className="paper-card-header">
+                      <label className="checkbox-row">
+                        <input checked={isSelected} onChange={() => togglePaperSelection(paper)} type="checkbox" />
+                        <span>Select</span>
+                      </label>
+                      <span className="source-tag">{paper.source}</span>
                     </div>
-
-                    <div className="thread-card-actions">
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          beginRenameThread(thread)
-                        }}
-                      >
-                        Rename
+                    <h3>{paper.title}</h3>
+                    <p className="paper-meta">
+                      {paper.authors.slice(0, 4).join(', ') || 'Unknown authors'}
+                      {paper.year ? ` · ${paper.year}` : ''}
+                      {paper.venue ? ` · ${paper.venue}` : ''}
+                    </p>
+                    <div className="paper-badges">
+                      {paper.citation_count !== null && <span className="paper-badge">{paper.citation_count} citations</span>}
+                      {paper.open_access && <span className="paper-badge">Open access</span>}
+                      {paper.doi && <span className="paper-badge">DOI</span>}
+                    </div>
+                    <p className="paper-abstract">{paper.abstract || 'No abstract available.'}</p>
+                    <div className="paper-actions">
+                      <button type="button" onClick={() => void savePaperToWorkspace(paper)} disabled={isSaved}>
+                        {isSaved ? 'Saved' : 'Save'}
                       </button>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          deleteThread(thread.id)
-                        }}
-                      >
-                        Delete
-                      </button>
+                      {paper.url && (
+                        <a href={paper.url} rel="noreferrer" target="_blank">
+                          Open
+                        </a>
+                      )}
+                      {paper.pdf_url && (
+                        <a href={paper.pdf_url} rel="noreferrer" target="_blank">
+                          PDF
+                        </a>
+                      )}
                     </div>
                   </article>
                 )
@@ -340,56 +632,174 @@ function App() {
             </div>
           </div>
 
-          <div className="examples">
-            <p className="panel-label">Try one</p>
-            {examples.map((example) => (
-              <button key={example} className="example-button" type="button" onClick={() => void sendMessage(example)}>
-                {example}
-              </button>
-            ))}
+          <div className="workspace-detail-panel">
+            <section className="detail-section selected-tray">
+              <div className="section-header">
+                <p className="panel-label">Selected papers</p>
+                <span className="panel-meta">{selectedPapers.length}</span>
+              </div>
+              <div className="selected-chip-list">
+                {selectedPapers.length > 0 ? (
+                  selectedPapers.map((paper) => (
+                    <button
+                      key={paperKey(paper)}
+                      className="selected-chip"
+                      type="button"
+                      onClick={() => togglePaperSelection(paper)}
+                    >
+                      <span>{paper.title}</span>
+                      <strong>Remove</strong>
+                    </button>
+                  ))
+                ) : (
+                  <p className="empty-state">Select papers from results or your saved list to synthesize or export them.</p>
+                )}
+              </div>
+              <div className="synthesis-actions">
+                <button className="secondary-button" disabled={isExporting || selectedPapers.length === 0} type="button" onClick={() => void exportSelectedPapers('bibtex')}>
+                  {isExporting ? 'Exporting' : 'Copy BibTeX'}
+                </button>
+                <button className="secondary-button" disabled={isExporting || selectedPapers.length === 0} type="button" onClick={() => void exportSelectedPapers('markdown')}>
+                  {isExporting ? 'Exporting' : 'Copy Reading List'}
+                </button>
+              </div>
+            </section>
+
+            <section className="detail-section">
+              <div className="section-header">
+                <p className="panel-label">Saved papers</p>
+                <span className="panel-meta">{workspaceDetail?.saved_papers.length ?? 0}</span>
+              </div>
+              <div className="card-list compact">
+                {(workspaceDetail?.saved_papers ?? []).map((paper) => {
+                  const key = paperKey(paper)
+                  return (
+                    <article className={`paper-card compact${selectedPaperKeys.includes(key) ? ' selected' : ''}`} key={key}>
+                      <div className="paper-card-header">
+                        <label className="checkbox-row">
+                          <input checked={selectedPaperKeys.includes(key)} onChange={() => togglePaperSelection(paper)} type="checkbox" />
+                          <span>Select</span>
+                        </label>
+                        <span className="source-tag">{paper.source}</span>
+                      </div>
+                      <h3>{paper.title}</h3>
+                      <p className="paper-meta">{paper.year ? `${paper.year}` : 'Year unknown'}{paper.venue ? ` · ${paper.venue}` : ''}</p>
+                      <div className="paper-actions">
+                        <button type="button" onClick={() => void removePaperFromWorkspace(paper)}>
+                          Remove
+                        </button>
+                        {paper.url && (
+                          <a href={paper.url} rel="noreferrer" target="_blank">
+                            Open
+                          </a>
+                        )}
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            </section>
+
+            <section className="detail-section">
+              <div className="section-header">
+                <p className="panel-label">Synthesis</p>
+                <span className="panel-meta">{selectedPapers.length} selected</span>
+              </div>
+              <textarea
+                className="question-input"
+                onChange={(event) => setReadingObjective(event.target.value)}
+                placeholder="Optional reading goal, like learn the basics fast or compare evaluation methods..."
+                rows={2}
+                value={readingObjective}
+              />
+              <div className="synthesis-actions">
+                <button className="secondary-button" disabled={isBuildingReadingPath || selectedPapers.length === 0} type="button" onClick={() => void buildReadingPath()}>
+                  {isBuildingReadingPath ? 'Planning' : 'Build reading path'}
+                </button>
+              </div>
+              <textarea
+                className="question-input"
+                onChange={(event) => setSynthesisQuestion(event.target.value)}
+                placeholder="Ask a question across the selected papers..."
+                rows={3}
+                value={synthesisQuestion}
+              />
+              <div className="synthesis-actions">
+                <button className="primary-button" disabled={isSynthesizing || selectedPapers.length === 0} type="button" onClick={() => void runSynthesis('summary')}>
+                  Summarize
+                </button>
+                <button className="secondary-button" disabled={isSynthesizing || selectedPapers.length < 2} type="button" onClick={() => void runSynthesis('compare')}>
+                  Compare
+                </button>
+                <button className="secondary-button" disabled={isSynthesizing || !synthesisQuestion.trim() || selectedPapers.length === 0} type="button" onClick={() => void runSynthesis('question')}>
+                  Ask
+                </button>
+              </div>
+              <div className="synthesis-output">
+                {readingPath ? (
+                  <div className="reading-path">
+                    <p className="reading-path-overview"><strong>{readingPath.objective}</strong></p>
+                    <p className="reading-path-overview">{readingPath.overview}</p>
+                    <div className="reading-path-list">
+                      {readingPath.steps.map((step) => (
+                        <article className="reading-step" key={`${step.source}-${step.external_id}-${step.order}`}>
+                          <span className="reading-step-order">{step.order}</span>
+                          <div>
+                            <h4>{step.title}</h4>
+                            <p className="paper-meta">{step.source}</p>
+                            <p>{step.rationale}</p>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p>{synthesisOutput || 'Select papers and run a synthesis to generate a working brief.'}</p>
+                )}
+              </div>
+            </section>
+
+            <section className="detail-section">
+              <div className="section-header">
+                <p className="panel-label">Notes</p>
+                <button className="secondary-button" disabled={isSavingNotes || workspaceDetail === null} type="button" onClick={() => void saveNotes()}>
+                  {isSavingNotes ? 'Saving' : 'Save notes'}
+                </button>
+              </div>
+              <textarea className="notes-input" onChange={handleNotesChange} placeholder="Capture takeaways, hypotheses, and next reads..." rows={8} value={notesDraft} />
+            </section>
+
+            <section className="detail-section">
+              <div className="section-header">
+                <p className="panel-label">Recent searches</p>
+              </div>
+              <div className="history-list">
+                {(workspaceDetail?.searches ?? []).slice(0, 8).map((search) => (
+                  <button
+                    key={search.id}
+                    className="history-card"
+                    type="button"
+                    onClick={() => {
+                      setQuery(search.query)
+                      setEnabledSources(
+                        sourceOptions
+                          .map((option) => option.key)
+                          .filter((source): source is SourceKey => search.sources.includes(source)),
+                      )
+                    }}
+                  >
+                    <strong>{search.query}</strong>
+                    <span>
+                      {search.result_count} results · {search.sources.join(', ')}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
           </div>
-        </div>
+        </section>
 
-        <div className="status-panel">
-          <span className="status-dot" />
-          <span>{isLoading ? 'Thinking through retrieved records' : 'Ready for a new angle'}</span>
-        </div>
-      </section>
-
-      <section className="chat-panel" aria-label="Chat">
-        <div className="chat-panel-header">
-          <div>
-            <p className="panel-label">Active chat</p>
-            <h2 className="chat-title">{activeThread.title}</h2>
-          </div>
-          <button className="secondary-action" type="button" onClick={() => beginRenameThread(activeThread)}>
-            Rename chat
-          </button>
-        </div>
-
-        <div className="messages">
-          {activeThread.messages.map((message) => (
-            <article className={`message ${message.role}`} key={message.id}>
-              <span className="message-role">{message.role === 'user' ? 'You' : 'Analyst'}</span>
-              <p>{message.text || '...'}</p>
-            </article>
-          ))}
-        </div>
-
-        {error && <p className="error-text">{error}</p>}
-
-        <form className="composer" onSubmit={onSubmit}>
-          <textarea
-            aria-label="Ask a sports question"
-            onChange={(event) => setInput(event.target.value)}
-            placeholder="Ask about matchups, shooting, rebounds, playoff games..."
-            rows={3}
-            value={input}
-          />
-          <button disabled={!canSend} type="submit">
-            {isLoading ? 'Running' : 'Send'}
-          </button>
-        </form>
+        {error && <p className="global-error">{error}</p>}
       </section>
     </main>
   )

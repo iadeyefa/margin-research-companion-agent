@@ -1,6 +1,8 @@
-# React + TypeScript + Vite
+# Research Companion Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript + Vite frontend for the research companion agent.
+
+The current UI supports multiple local chat threads and is being repurposed toward publication search and research workflows.
 
 Currently, two official plugins are available:
 
