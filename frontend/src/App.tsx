@@ -1,34 +1,46 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom'
+import './styles/app.css'
+import { AppShell } from './components/AppShell'
+import { DashboardPage } from './pages/Dashboard'
+import { LibraryPage } from './pages/Library'
+import { PaperDetailPage } from './pages/PaperDetail'
+import { HistoryTab } from './pages/workspace/History'
+import { NotesTab } from './pages/workspace/Notes'
+import { OverviewTab } from './pages/workspace/Overview'
+import { ReadingPathTab } from './pages/workspace/ReadingPath'
+import { SavedTab } from './pages/workspace/Saved'
+import { SearchTab } from './pages/workspace/Search'
+import { SynthesisTab } from './pages/workspace/Synthesis'
+import { WorkspaceLayout } from './pages/workspace/WorkspaceLayout'
+import { ThemeProvider } from './state/ThemeProvider'
+import { WorkspaceStoreProvider } from './state/WorkspaceStore'
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+    <Router>
+      <ThemeProvider>
+        <WorkspaceStoreProvider>
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route index element={<DashboardPage />} />
+            <Route path="library" element={<LibraryPage />} />
+            <Route path="papers/:source/:externalId" element={<PaperDetailPage />} />
+            <Route path="workspaces/:workspaceId" element={<WorkspaceLayout />}>
+              <Route index element={<Navigate to="overview" replace />} />
+              <Route path="overview" element={<OverviewTab />} />
+              <Route path="search" element={<SearchTab />} />
+              <Route path="saved" element={<SavedTab />} />
+              <Route path="synthesis" element={<SynthesisTab />} />
+              <Route path="reading-path" element={<ReadingPathTab />} />
+              <Route path="notes" element={<NotesTab />} />
+              <Route path="history" element={<HistoryTab />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+        </WorkspaceStoreProvider>
+      </ThemeProvider>
+    </Router>
   )
 }
 

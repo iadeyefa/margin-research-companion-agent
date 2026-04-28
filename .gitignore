@@ -26,7 +26,7 @@ env/
 
 # --- ML / LLM artifacts ---
 checkpoints/
-models/
+/models/
 model_cache/
 wandb/
 runs/
@@ -42,6 +42,7 @@ data/raw/
 data/processed/
 *.csv
 *.parquet
+*.db
 
 # --- OS ---
 .DS_Store
@@ -55,3 +56,8 @@ Thumbs.db
 # --- Misc ---
 tmp/
 .cache/
+
+# --- Local SQLite databases ---
+backend/*.db
+*.sqlite
+*.sqlite3
