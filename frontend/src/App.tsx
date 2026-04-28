@@ -27,6 +27,7 @@ type SearchResponse = {
 }
 
 type SortOption = 'relevance' | 'newest' | 'most_cited'
+type DetailTab = 'selected' | 'saved' | 'synthesis' | 'notes' | 'history'
 
 type ExportResponse = {
   format: string
@@ -128,6 +129,7 @@ function App() {
   const [error, setError] = useState('')
   const [editingWorkspaceId, setEditingWorkspaceId] = useState<number | null>(null)
   const [workspaceTitleDraft, setWorkspaceTitleDraft] = useState('')
+  const [activeDetailTab, setActiveDetailTab] = useState<DetailTab>('selected')
 
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null,
@@ -154,6 +156,14 @@ function App() {
     () => new Set((workspaceDetail?.saved_papers ?? []).map((paper) => paperKey(paper))),
     [workspaceDetail?.saved_papers],
   )
+
+  const detailTabs: Array<{ key: DetailTab; label: string; count?: number }> = [
+    { key: 'selected', label: 'Selected', count: selectedPapers.length },
+    { key: 'saved', label: 'Saved', count: workspaceDetail?.saved_papers?.length ?? 0 },
+    { key: 'synthesis', label: 'Synthesis', count: selectedPapers.length },
+    { key: 'notes', label: 'Notes' },
+    { key: 'history', label: 'History', count: workspaceDetail?.searches?.length ?? 0 },
+  ]
 
   useEffect(() => {
     void loadWorkspaces()
@@ -562,6 +572,9 @@ function App() {
             <div>
               <p className="panel-label">Search</p>
               <h2 className="section-title">{activeWorkspace?.title ?? 'Loading workspace...'}</h2>
+              <p className="search-copy">
+                Build a focused reading stack from scholarly sources, then save, synthesize, and export the papers that matter.
+              </p>
             </div>
             <p className="section-kicker">Cross-source literature search</p>
           </div>
@@ -588,7 +601,7 @@ function App() {
             </div>
             <div className="source-row">
               {sourceOptions.map((option) => (
-                <label className={`source-chip${enabledSources.includes(option.key) ? ' active' : ''}`} key={option.key}>
+                <label className={`source-chip source-${option.key}${enabledSources.includes(option.key) ? ' active' : ''}`} key={option.key}>
                   <input
                     checked={enabledSources.includes(option.key)}
                     onChange={() => toggleSource(option.key)}
@@ -674,7 +687,7 @@ function App() {
                           <input checked={isSelected} onChange={() => togglePaperSelection(paper)} type="checkbox" />
                           <span>Select</span>
                         </label>
-                        <span className="source-tag">{paper.source}</span>
+                        <span className={`source-tag source-${paper.source}`}>{paper.source}</span>
                       </div>
                       <h3>{paper.title}</h3>
                       <p className="paper-meta">
@@ -711,176 +724,211 @@ function App() {
           </div>
 
           <aside className="workspace-detail-panel">
-            <section className="detail-section selected-tray">
-              <div className="section-header">
-                <p className="panel-label">Selected papers</p>
-                <span className="panel-meta">{selectedPapers.length}</span>
-              </div>
-              <div className="selected-chip-list">
-                {selectedPapers.length > 0 ? (
-                  selectedPapers.map((paper) => (
-                    <button
-                      key={paperKey(paper)}
-                      className="selected-chip"
-                      type="button"
-                      onClick={() => togglePaperSelection(paper)}
-                    >
-                      <span>{paper.title}</span>
-                      <strong>Remove</strong>
-                    </button>
-                  ))
-                ) : (
-                  <p className="empty-state">Select papers from results or your saved list to synthesize or export them.</p>
-                )}
-              </div>
-              <div className="synthesis-actions">
-                <button className="secondary-button" disabled={isExporting || selectedPapers.length === 0} type="button" onClick={() => void exportSelectedPapers('bibtex')}>
-                  {isExporting ? 'Exporting' : 'Copy BibTeX'}
-                </button>
-                <button className="secondary-button" disabled={isExporting || selectedPapers.length === 0} type="button" onClick={() => void exportSelectedPapers('markdown')}>
-                  {isExporting ? 'Exporting' : 'Copy Reading List'}
-                </button>
-              </div>
-            </section>
-
-            <section className="detail-section">
-              <div className="section-header">
-                <p className="panel-label">Saved papers</p>
-                <span className="panel-meta">{workspaceDetail?.saved_papers?.length ?? 0}</span>
-              </div>
-              <div className="card-list compact">
-                {(workspaceDetail?.saved_papers ?? []).length === 0 ? (
-                  <p className="empty-state">Saved papers will appear here once you pin strong results into this workspace.</p>
-                ) : (
-                  (workspaceDetail?.saved_papers ?? []).map((paper) => {
-                    const key = paperKey(paper)
-                    return (
-                      <article className={`paper-card compact${selectedPaperKeys.includes(key) ? ' selected' : ''}`} key={key}>
-                        <div className="paper-card-header">
-                          <label className="checkbox-row">
-                            <input checked={selectedPaperKeys.includes(key)} onChange={() => togglePaperSelection(paper)} type="checkbox" />
-                            <span>Select</span>
-                          </label>
-                          <span className="source-tag">{paper.source}</span>
-                        </div>
-                        <h3>{paper.title}</h3>
-                        <p className="paper-meta">{paper.year ? `${paper.year}` : 'Year unknown'}{paper.venue ? ` · ${paper.venue}` : ''}</p>
-                        <div className="paper-actions">
-                          <button type="button" onClick={() => void removePaperFromWorkspace(paper)}>
-                            Remove
-                          </button>
-                          {paper.url && (
-                            <a href={paper.url} rel="noreferrer" target="_blank">
-                              Open
-                            </a>
-                          )}
-                        </div>
-                      </article>
-                    )
-                  })
-                )}
-              </div>
-            </section>
-
-            <section className="detail-section">
-              <div className="section-header">
-                <p className="panel-label">Synthesis</p>
+            <section className="detail-shell">
+              <div className="detail-hero">
+                <div>
+                  <p className="panel-label">Workspace tools</p>
+                  <h3>Focus the next move</h3>
+                </div>
                 <span className="panel-meta">{selectedPapers.length} selected</span>
               </div>
-              <textarea
-                className="question-input"
-                onChange={(event) => setReadingObjective(event.target.value)}
-                placeholder="Optional reading goal, like learn the basics fast or compare evaluation methods..."
-                rows={2}
-                value={readingObjective}
-              />
-              <div className="synthesis-actions">
-                <button className="secondary-button" disabled={isBuildingReadingPath || selectedPapers.length === 0} type="button" onClick={() => void buildReadingPath()}>
-                  {isBuildingReadingPath ? 'Planning' : 'Build reading path'}
-                </button>
+              <div className="detail-tabs" role="tablist" aria-label="Workspace tools">
+                {detailTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    className={`detail-tab${activeDetailTab === tab.key ? ' active' : ''}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeDetailTab === tab.key}
+                    onClick={() => setActiveDetailTab(tab.key)}
+                  >
+                    <span>{tab.label}</span>
+                    {tab.count !== undefined && <strong>{tab.count}</strong>}
+                  </button>
+                ))}
               </div>
-              <textarea
-                className="question-input"
-                onChange={(event) => setSynthesisQuestion(event.target.value)}
-                placeholder="Ask a question across the selected papers..."
-                rows={3}
-                value={synthesisQuestion}
-              />
-              <div className="synthesis-actions">
-                <button className="primary-button" disabled={isSynthesizing || selectedPapers.length === 0} type="button" onClick={() => void runSynthesis('summary')}>
-                  Summarize
-                </button>
-                <button className="secondary-button" disabled={isSynthesizing || selectedPapers.length < 2} type="button" onClick={() => void runSynthesis('compare')}>
-                  Compare
-                </button>
-                <button className="secondary-button" disabled={isSynthesizing || !synthesisQuestion.trim() || selectedPapers.length === 0} type="button" onClick={() => void runSynthesis('question')}>
-                  Ask
-                </button>
-              </div>
-              <div className="synthesis-output">
-                {readingPath ? (
-                  <div className="reading-path">
-                    <p className="reading-path-overview"><strong>{readingPath.objective}</strong></p>
-                    <p className="reading-path-overview">{readingPath.overview}</p>
-                    <div className="reading-path-list">
-                      {readingPath.steps.map((step) => (
-                        <article className="reading-step" key={`${step.source}-${step.external_id}-${step.order}`}>
-                          <span className="reading-step-order">{step.order}</span>
-                          <div>
-                            <h4>{step.title}</h4>
-                            <p className="paper-meta">{step.source}</p>
-                            <p>{step.rationale}</p>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
+
+              {activeDetailTab === 'selected' && (
+                <section className="detail-section">
+                  <div className="section-header">
+                    <p className="panel-label">Selected papers</p>
+                    <span className="panel-meta">{selectedPapers.length}</span>
                   </div>
-                ) : (
-                  <p>{synthesisOutput || 'Select papers and run a synthesis to generate a working brief.'}</p>
-                )}
-              </div>
-            </section>
-
-            <section className="detail-section">
-              <div className="section-header">
-                <p className="panel-label">Notes</p>
-                <button className="secondary-button" disabled={isSavingNotes || workspaceDetail === null} type="button" onClick={() => void saveNotes()}>
-                  {isSavingNotes ? 'Saving' : 'Save notes'}
-                </button>
-              </div>
-              <textarea className="notes-input" onChange={handleNotesChange} placeholder="Capture takeaways, hypotheses, and next reads..." rows={8} value={notesDraft} />
-            </section>
-
-            <section className="detail-section">
-              <div className="section-header">
-                <p className="panel-label">Recent searches</p>
-              </div>
-              <div className="history-list">
-                {(workspaceDetail?.searches ?? []).length === 0 ? (
-                  <p className="empty-state">Search history will collect here as you explore this workspace.</p>
-                ) : (
-                  (workspaceDetail?.searches ?? []).slice(0, 8).map((search) => (
-                    <button
-                      key={search.id}
-                      className="history-card"
-                      type="button"
-                      onClick={() => {
-                        setQuery(search.query)
-                        setEnabledSources(
-                          sourceOptions
-                            .map((option) => option.key)
-                            .filter((source): source is SourceKey => search.sources.includes(source)),
-                        )
-                      }}
-                    >
-                      <strong>{search.query}</strong>
-                      <span>
-                        {search.result_count} results · {search.sources.join(', ')}
-                      </span>
+                  <div className="selected-chip-list">
+                    {selectedPapers.length > 0 ? (
+                      selectedPapers.map((paper) => (
+                        <button
+                          key={paperKey(paper)}
+                          className="selected-chip"
+                          type="button"
+                          onClick={() => togglePaperSelection(paper)}
+                        >
+                          <span>{paper.title}</span>
+                          <strong>Remove</strong>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="empty-state">Select papers from results or saved papers to prepare exports and synthesis.</p>
+                    )}
+                  </div>
+                  <div className="synthesis-actions">
+                    <button className="secondary-button" disabled={isExporting || selectedPapers.length === 0} type="button" onClick={() => void exportSelectedPapers('bibtex')}>
+                      {isExporting ? 'Exporting' : 'Copy BibTeX'}
                     </button>
-                  ))
-                )}
-              </div>
+                    <button className="secondary-button" disabled={isExporting || selectedPapers.length === 0} type="button" onClick={() => void exportSelectedPapers('markdown')}>
+                      {isExporting ? 'Exporting' : 'Copy Reading List'}
+                    </button>
+                  </div>
+                </section>
+              )}
+
+              {activeDetailTab === 'saved' && (
+                <section className="detail-section">
+                  <div className="section-header">
+                    <p className="panel-label">Saved papers</p>
+                    <span className="panel-meta">{workspaceDetail?.saved_papers?.length ?? 0}</span>
+                  </div>
+                  <div className="card-list compact">
+                    {(workspaceDetail?.saved_papers ?? []).length === 0 ? (
+                      <p className="empty-state">Pinned papers will collect here as a durable reading list.</p>
+                    ) : (
+                      (workspaceDetail?.saved_papers ?? []).map((paper) => {
+                        const key = paperKey(paper)
+                        return (
+                          <article className={`paper-card compact${selectedPaperKeys.includes(key) ? ' selected' : ''}`} key={key}>
+                            <div className="paper-card-header">
+                              <label className="checkbox-row">
+                                <input checked={selectedPaperKeys.includes(key)} onChange={() => togglePaperSelection(paper)} type="checkbox" />
+                                <span>Select</span>
+                              </label>
+                              <span className={`source-tag source-${paper.source}`}>{paper.source}</span>
+                            </div>
+                            <h3>{paper.title}</h3>
+                            <p className="paper-meta">{paper.year ? `${paper.year}` : 'Year unknown'}{paper.venue ? ` · ${paper.venue}` : ''}</p>
+                            <div className="paper-actions">
+                              <button type="button" onClick={() => void removePaperFromWorkspace(paper)}>
+                                Remove
+                              </button>
+                              {paper.url && (
+                                <a href={paper.url} rel="noreferrer" target="_blank">
+                                  Open
+                                </a>
+                              )}
+                            </div>
+                          </article>
+                        )
+                      })
+                    )}
+                  </div>
+                </section>
+              )}
+
+              {activeDetailTab === 'synthesis' && (
+                <section className="detail-section">
+                  <div className="section-header">
+                    <p className="panel-label">Synthesis</p>
+                    <span className="panel-meta">{selectedPapers.length} selected</span>
+                  </div>
+                  <textarea
+                    className="question-input"
+                    onChange={(event) => setReadingObjective(event.target.value)}
+                    placeholder="Optional reading goal, like learn the basics fast or compare evaluation methods..."
+                    rows={2}
+                    value={readingObjective}
+                  />
+                  <div className="synthesis-actions">
+                    <button className="secondary-button" disabled={isBuildingReadingPath || selectedPapers.length === 0} type="button" onClick={() => void buildReadingPath()}>
+                      {isBuildingReadingPath ? 'Planning' : 'Build reading path'}
+                    </button>
+                  </div>
+                  <textarea
+                    className="question-input"
+                    onChange={(event) => setSynthesisQuestion(event.target.value)}
+                    placeholder="Ask a question across the selected papers..."
+                    rows={3}
+                    value={synthesisQuestion}
+                  />
+                  <div className="synthesis-actions">
+                    <button className="primary-button" disabled={isSynthesizing || selectedPapers.length === 0} type="button" onClick={() => void runSynthesis('summary')}>
+                      Summarize
+                    </button>
+                    <button className="secondary-button" disabled={isSynthesizing || selectedPapers.length < 2} type="button" onClick={() => void runSynthesis('compare')}>
+                      Compare
+                    </button>
+                    <button className="secondary-button" disabled={isSynthesizing || !synthesisQuestion.trim() || selectedPapers.length === 0} type="button" onClick={() => void runSynthesis('question')}>
+                      Ask
+                    </button>
+                  </div>
+                  <div className="synthesis-output">
+                    {readingPath ? (
+                      <div className="reading-path">
+                        <p className="reading-path-overview"><strong>{readingPath.objective}</strong></p>
+                        <p className="reading-path-overview">{readingPath.overview}</p>
+                        <div className="reading-path-list">
+                          {readingPath.steps.map((step) => (
+                            <article className="reading-step" key={`${step.source}-${step.external_id}-${step.order}`}>
+                              <span className="reading-step-order">{step.order}</span>
+                              <div>
+                                <h4>{step.title}</h4>
+                                <p className="paper-meta">{step.source}</p>
+                                <p>{step.rationale}</p>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p>{synthesisOutput || 'Select papers and run a synthesis to generate a working brief.'}</p>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              {activeDetailTab === 'notes' && (
+                <section className="detail-section">
+                  <div className="section-header">
+                    <p className="panel-label">Notes</p>
+                    <button className="secondary-button" disabled={isSavingNotes || workspaceDetail === null} type="button" onClick={() => void saveNotes()}>
+                      {isSavingNotes ? 'Saving' : 'Save notes'}
+                    </button>
+                  </div>
+                  <textarea className="notes-input" onChange={handleNotesChange} placeholder="Capture takeaways, hypotheses, and next reads..." rows={12} value={notesDraft} />
+                </section>
+              )}
+
+              {activeDetailTab === 'history' && (
+                <section className="detail-section">
+                  <div className="section-header">
+                    <p className="panel-label">Recent searches</p>
+                  </div>
+                  <div className="history-list">
+                    {(workspaceDetail?.searches ?? []).length === 0 ? (
+                      <p className="empty-state">Search history will collect here as you explore this workspace.</p>
+                    ) : (
+                      (workspaceDetail?.searches ?? []).slice(0, 8).map((search) => (
+                        <button
+                          key={search.id}
+                          className="history-card"
+                          type="button"
+                          onClick={() => {
+                            setQuery(search.query)
+                            setEnabledSources(
+                              sourceOptions
+                                .map((option) => option.key)
+                                .filter((source): source is SourceKey => search.sources.includes(source)),
+                            )
+                          }}
+                        >
+                          <strong>{search.query}</strong>
+                          <span>
+                            {search.result_count} results · {search.sources.join(', ')}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </section>
+              )}
             </section>
           </aside>
         </section>
