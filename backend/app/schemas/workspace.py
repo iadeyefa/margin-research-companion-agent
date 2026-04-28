@@ -34,3 +34,9 @@ class WorkspaceSummary(ApiModel):
 class WorkspaceDetail(WorkspaceSummary):
     saved_papers: list[ResearchPaper]
     searches: list[SearchHistoryRead]
+
+
+class LibraryPaper(ResearchPaper):
+    workspace_id: int
+    workspace_title: str
+    saved_at: datetime

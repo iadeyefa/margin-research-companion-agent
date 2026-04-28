@@ -7,10 +7,50 @@ from app.db.session import get_db
 from app.models.research_saved_paper import ResearchSavedPaper
 from app.models.research_workspace import ResearchWorkspace
 from app.schemas.research import ResearchPaper
-from app.schemas.workspace import WorkspaceCreate, WorkspaceDetail, WorkspaceSummary, WorkspaceUpdate
+from app.schemas.workspace import (
+    LibraryPaper,
+    WorkspaceCreate,
+    WorkspaceDetail,
+    WorkspaceSummary,
+    WorkspaceUpdate,
+)
 
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
+
+
+library_router = APIRouter(prefix="/library", tags=["library"])
+
+
+@library_router.get("/papers", response_model=list[LibraryPaper])
+def list_library_papers(db: Session = Depends(get_db)):
+    records = db.scalars(
+        select(ResearchSavedPaper)
+        .options(selectinload(ResearchSavedPaper.workspace))
+        .order_by(ResearchSavedPaper.created_at.desc())
+    ).all()
+
+    return [
+        LibraryPaper(
+            source=record.source,
+            external_id=record.external_id,
+            title=record.title,
+            abstract=record.abstract,
+            authors=record.authors or [],
+            venue=record.venue,
+            year=record.year,
+            publication_date=record.publication_date,
+            doi=record.doi,
+            url=record.url,
+            pdf_url=record.pdf_url,
+            citation_count=record.citation_count,
+            open_access=record.open_access,
+            workspace_id=record.workspace_id,
+            workspace_title=record.workspace.title if record.workspace else "",
+            saved_at=record.created_at,
+        )
+        for record in records
+    ]
 
 
 def _paper_schema(record: ResearchSavedPaper) -> ResearchPaper:

@@ -29,14 +29,17 @@ class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <main className="app-shell app-shell-fallback">
-          <section className="fallback-panel">
-            <p className="eyebrow">Research Companion Agent</p>
-            <h1>Frontend error</h1>
-            <p className="intro">
-              The app hit a runtime error while rendering. Refresh once after the backend is running, and if it still fails, check the browser console.
+        <main className="page" style={{ padding: 32 }}>
+          <section className="surface" style={{ maxWidth: 720 }}>
+            <p className="surface-eyebrow">Research Companion</p>
+            <h1 className="surface-title">Frontend error</h1>
+            <p className="muted">
+              The app hit a runtime error while rendering. Refresh once after the backend is running, and if it still fails,
+              check the browser console.
             </p>
-            <pre className="fallback-error">{this.state.message}</pre>
+            <pre style={{ background: '#fff5f5', padding: 12, borderRadius: 8, overflowX: 'auto' }}>
+              {this.state.message}
+            </pre>
           </section>
         </main>
       )
