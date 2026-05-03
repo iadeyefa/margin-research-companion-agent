@@ -9,7 +9,7 @@ import {
 } from 'react'
 import type { ReactNode } from 'react'
 import { api } from '../api/client'
-import type { Paper, WorkspaceDetail, WorkspaceSummary } from '../api/types'
+import type { Paper, WorkspaceBrief, WorkspaceDetail, WorkspaceSummary } from '../api/types'
 import { paperKey } from '../api/types'
 
 type ToastTone = 'info' | 'error' | 'success'
@@ -20,12 +20,12 @@ type Selection = {
   papers: Paper[]
 }
 
-type SynthesisOutput = {
-  workspaceId: number
+type BriefPayload = {
   mode: 'summary' | 'compare' | 'question' | 'extract' | 'reading_path' | 'export'
+  style: string
   title: string
   body: string
-  createdAt: string
+  source_papers: Paper[]
 }
 
 type StoreValue = {
@@ -34,7 +34,6 @@ type StoreValue = {
   loadingWorkspaces: boolean
   selection: Selection
   toasts: Toast[]
-  briefs: Record<number, SynthesisOutput[]>
   refreshWorkspaces: () => Promise<WorkspaceSummary[]>
   refreshWorkspace: (id: number) => Promise<WorkspaceDetail | null>
   createWorkspace: (title?: string) => Promise<WorkspaceDetail | null>
@@ -48,10 +47,19 @@ type StoreValue = {
   isSelected: (paper: Paper) => boolean
   pushToast: (message: string, tone?: ToastTone) => void
   dismissToast: (id: number) => void
-  recordBrief: (workspaceId: number, brief: Omit<SynthesisOutput, 'createdAt' | 'workspaceId'>) => void
+  recordBrief: (workspaceId: number, brief: BriefPayload) => Promise<void>
+  deleteBrief: (workspaceId: number, briefId: number) => Promise<void>
+  updateWorkspaceState: (workspaceId: number, key: string, value: Record<string, unknown>) => Promise<void>
+  updatePaperNote: (workspaceId: number, paper: Paper, note: string) => Promise<void>
 }
 
 const StoreContext = createContext<StoreValue | null>(null)
+
+function persistSelection(workspaceId: number, papers: Paper[]) {
+  void api.updateWorkspaceState(workspaceId, 'selection', {
+    papers: papers.map((paper) => ({ source: paper.source, external_id: paper.external_id })),
+  })
+}
 
 export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
@@ -59,7 +67,6 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true)
   const [selection, setSelectionState] = useState<Selection>({ workspaceId: null, papers: [] })
   const [toasts, setToasts] = useState<Toast[]>([])
-  const [briefs, setBriefs] = useState<Record<number, SynthesisOutput[]>>({})
   const toastIdRef = useRef(0)
 
   const pushToast = useCallback((message: string, tone: ToastTone = 'info') => {
@@ -93,6 +100,26 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       try {
         const detail = await api.getWorkspace(id)
         setWorkspaceDetails((current) => ({ ...current, [id]: detail }))
+        setSelectionState((current) => {
+          if (current.workspaceId !== null && current.workspaceId !== id) return current
+          const savedSelection = detail.state.find((entry) => entry.state_key === 'selection')
+          const rawPapers = savedSelection?.value?.papers
+          if (!Array.isArray(rawPapers)) return current
+          const keys = new Set(
+            rawPapers
+              .map((item) =>
+                item &&
+                typeof item === 'object' &&
+                'source' in item &&
+                'external_id' in item
+                  ? `${String(item.source)}::${String(item.external_id)}`
+                  : '',
+              )
+              .filter(Boolean),
+          )
+          if (keys.size === 0) return current
+          return { workspaceId: id, papers: detail.saved_papers.filter((paper) => keys.has(paperKey(paper))) }
+        })
         setWorkspaces((current) => {
           const stub: WorkspaceSummary = {
             id: detail.id,
@@ -172,11 +199,6 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
           return next
         })
         setWorkspaces((current) => current.filter((w) => w.id !== id))
-        setBriefs((current) => {
-          const next = { ...current }
-          delete next[id]
-          return next
-        })
         setSelectionState((current) => (current.workspaceId === id ? { workspaceId: null, papers: [] } : current))
         pushToast('Workspace deleted', 'success')
       } catch (caught) {
@@ -220,6 +242,7 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   const togglePaperSelection = useCallback((workspaceId: number, paper: Paper) => {
     setSelectionState((current) => {
       if (current.workspaceId !== null && current.workspaceId !== workspaceId) {
+        persistSelection(workspaceId, [paper])
         return { workspaceId, papers: [paper] }
       }
       const key = paperKey(paper)
@@ -227,15 +250,20 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       const nextPapers = exists
         ? current.papers.filter((p) => paperKey(p) !== key)
         : [...current.papers, paper]
+      persistSelection(workspaceId, nextPapers)
       return { workspaceId, papers: nextPapers }
     })
   }, [])
 
   const clearSelection = useCallback(() => {
-    setSelectionState({ workspaceId: null, papers: [] })
+    setSelectionState((current) => {
+      if (current.workspaceId !== null) persistSelection(current.workspaceId, [])
+      return { workspaceId: null, papers: [] }
+    })
   }, [])
 
   const setSelection = useCallback((workspaceId: number, papers: Paper[]) => {
+    persistSelection(workspaceId, papers)
     setSelectionState({ workspaceId, papers })
   }, [])
 
@@ -248,18 +276,66 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
   )
 
   const recordBrief = useCallback(
-    (workspaceId: number, brief: Omit<SynthesisOutput, 'createdAt' | 'workspaceId'>) => {
-      setBriefs((current) => {
-        const next: SynthesisOutput = {
-          ...brief,
-          workspaceId,
-          createdAt: new Date().toISOString(),
-        }
-        const list = current[workspaceId] ?? []
-        return { ...current, [workspaceId]: [next, ...list].slice(0, 20) }
+    async (workspaceId: number, brief: BriefPayload) => {
+      const created: WorkspaceBrief = await api.createBrief(workspaceId, {
+        mode: brief.mode,
+        style: brief.style,
+        title: brief.title,
+        body: brief.body,
+        source_papers: brief.source_papers,
+      })
+      setWorkspaceDetails((current) => {
+        const ex = current[workspaceId]
+        if (!ex) return current
+        const rest = (ex.briefs ?? []).filter((b) => b.id !== created.id)
+        return { ...current, [workspaceId]: { ...ex, briefs: [created, ...rest] } }
+      })
+      await refreshWorkspace(workspaceId)
+      setWorkspaceDetails((current) => {
+        const ex = current[workspaceId]
+        if (!ex || ex.briefs?.some((b) => b.id === created.id)) return current
+        return { ...current, [workspaceId]: { ...ex, briefs: [created, ...(ex.briefs ?? [])] } }
       })
     },
-    [],
+    [refreshWorkspace],
+  )
+
+  const deleteBrief = useCallback(
+    async (workspaceId: number, briefId: number) => {
+      try {
+        await api.deleteBrief(workspaceId, briefId)
+        await refreshWorkspace(workspaceId)
+        pushToast('Brief removed', 'success')
+      } catch (caught) {
+        pushToast(caught instanceof Error ? caught.message : 'Failed to delete brief.', 'error')
+      }
+    },
+    [pushToast, refreshWorkspace],
+  )
+
+  const updateWorkspaceState = useCallback(
+    async (workspaceId: number, key: string, value: Record<string, unknown>) => {
+      try {
+        await api.updateWorkspaceState(workspaceId, key, value)
+        await refreshWorkspace(workspaceId)
+      } catch (caught) {
+        pushToast(caught instanceof Error ? caught.message : 'Failed to save workspace state.', 'error')
+      }
+    },
+    [pushToast, refreshWorkspace],
+  )
+
+  const updatePaperNote = useCallback(
+    async (workspaceId: number, paper: Paper, note: string) => {
+      try {
+        await api.updatePaperNote(workspaceId, paper, note)
+        await refreshWorkspace(workspaceId)
+        pushToast('Paper note saved', 'success')
+      } catch (caught) {
+        pushToast(caught instanceof Error ? caught.message : 'Failed to save paper note.', 'error')
+      }
+    },
+    [pushToast, refreshWorkspace],
   )
 
   useEffect(() => {
@@ -273,7 +349,6 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       loadingWorkspaces,
       selection,
       toasts,
-      briefs,
       refreshWorkspaces,
       refreshWorkspace,
       createWorkspace,
@@ -288,6 +363,9 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       pushToast,
       dismissToast,
       recordBrief,
+      deleteBrief,
+      updateWorkspaceState,
+      updatePaperNote,
     }),
     [
       workspaces,
@@ -295,7 +373,6 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       loadingWorkspaces,
       selection,
       toasts,
-      briefs,
       refreshWorkspaces,
       refreshWorkspace,
       createWorkspace,
@@ -310,6 +387,9 @@ export function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
       pushToast,
       dismissToast,
       recordBrief,
+      deleteBrief,
+      updateWorkspaceState,
+      updatePaperNote,
     ],
   )
 

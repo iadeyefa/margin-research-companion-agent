@@ -32,3 +32,20 @@ class ResearchWorkspace(Base):
         cascade="all, delete-orphan",
         order_by="ResearchSearch.created_at.desc()",
     )
+    briefs = relationship(
+        "ResearchWorkspaceBrief",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        order_by="ResearchWorkspaceBrief.id.desc()",
+    )
+    state_entries = relationship(
+        "ResearchWorkspaceState",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+    )
+    paper_notes = relationship(
+        "ResearchPaperNote",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        order_by="ResearchPaperNote.updated_at.desc()",
+    )

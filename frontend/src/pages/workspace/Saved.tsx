@@ -15,6 +15,7 @@ export function SavedTab() {
     workspaceDetails,
     refreshWorkspace,
     removePaper,
+    updatePaperNote,
     togglePaperSelection,
     isSelected,
     setSelection,
@@ -25,9 +26,15 @@ export function SavedTab() {
   const [sourceFilter, setSourceFilter] = useState<SourceKey | 'all'>('all')
   const [sort, setSort] = useState<SortKey>('recent')
   const [yearFilter, setYearFilter] = useState<'all' | 'recent5' | 'recent10'>('all')
+  const [detailReady, setDetailReady] = useState(false)
 
   useEffect(() => {
-    if (!Number.isNaN(id)) void refreshWorkspace(id)
+    if (Number.isNaN(id)) {
+      setDetailReady(true)
+      return
+    }
+    setDetailReady(false)
+    void refreshWorkspace(id).finally(() => setDetailReady(true))
   }, [id, refreshWorkspace])
 
   const papers = useMemo(() => {
@@ -51,6 +58,24 @@ export function SavedTab() {
 
   const allKeys = useMemo(() => papers.map((paper) => paperKey(paper)), [papers])
   const allSelected = allKeys.length > 0 && allKeys.every((key) => selection.papers.some((paper) => paperKey(paper) === key))
+
+  const savedTotal = detail?.saved_papers?.length ?? 0
+  const libraryEmpty = detailReady && savedTotal === 0
+  const noteByPaper = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const note of detail?.paper_notes ?? []) {
+      map.set(`${note.source}::${note.external_id}`, note.note)
+    }
+    return map
+  }, [detail?.paper_notes])
+
+  if (!detailReady) {
+    return (
+      <div className="saved-tab">
+        <p className="muted">Loading saved papers…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="saved-tab">
@@ -109,14 +134,15 @@ export function SavedTab() {
       {papers.length === 0 ? (
         <EmptyState
           size="lg"
-          title={detail?.saved_papers.length === 0 ? 'Your library is empty' : 'No papers match these filters'}
+          icon={libraryEmpty ? '📚' : '🔍'}
+          title={libraryEmpty ? 'Your library is empty' : 'No papers match these filters'}
           description={
-            detail?.saved_papers.length === 0
+            libraryEmpty
               ? 'Save papers from the Search tab and they will collect here.'
               : 'Try clearing a filter, or run a new search.'
           }
           action={
-            detail?.saved_papers.length === 0 ? (
+            libraryEmpty ? (
               <Link className="pill-button is-primary" to={`/workspaces/${id}/search`}>
                 Open search
               </Link>
@@ -142,8 +168,10 @@ export function SavedTab() {
               paper={paper}
               isSelected={isSelected(paper)}
               isSaved
+              note={noteByPaper.get(paperKey(paper)) ?? ''}
               onToggleSelect={(item) => togglePaperSelection(id, item)}
               onRemove={(item) => void removePaper(id, item)}
+              onSaveNote={(item, note) => void updatePaperNote(id, item, note)}
             />
           ))}
         </div>

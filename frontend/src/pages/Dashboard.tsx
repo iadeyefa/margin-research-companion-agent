@@ -25,14 +25,10 @@ function formatRelative(value: string): string {
 
 export function DashboardPage() {
   const navigate = useNavigate()
-  const { workspaces, briefs, createWorkspace, refreshWorkspaces } = useWorkspaceStore()
+  const { workspaces, createWorkspace } = useWorkspaceStore()
   const [details, setDetails] = useState<Record<number, WorkspaceDetail>>({})
   const [library, setLibrary] = useState<LibraryPaper[]>([])
   const [loadingLibrary, setLoadingLibrary] = useState(true)
-
-  useEffect(() => {
-    void refreshWorkspaces()
-  }, [refreshWorkspaces])
 
   useEffect(() => {
     const state = { cancelled: false }
@@ -59,20 +55,23 @@ export function DashboardPage() {
   }, [workspaces])
 
   useEffect(() => {
-    let cancelled = false
+    const state = { cancelled: false }
     async function loadLibrary() {
       setLoadingLibrary(true)
       try {
         const data = await api.listLibrary()
-        if (!cancelled) setLibrary(data)
+        if (!state.cancelled) setLibrary(data)
       } catch {
-        if (!cancelled) setLibrary([])
+        if (!state.cancelled) setLibrary([])
       } finally {
-        if (!cancelled) setLoadingLibrary(false)
+        if (!state.cancelled) setLoadingLibrary(false)
       }
     }
     void loadLibrary()
-  }, [workspaces.length])
+    return () => {
+      state.cancelled = true
+    }
+  }, [])
 
   const recentWorkspaces: WorkspaceSummary[] = useMemo(() => workspaces.slice(0, 6), [workspaces])
   const totalSaved = useMemo(() => library.length, [library])
@@ -91,6 +90,11 @@ export function DashboardPage() {
       .slice(0, 6)
   }, [details])
 
+  const totalBriefs = useMemo(
+    () => Object.values(details).reduce((sum, d) => sum + (d.briefs?.length ?? 0), 0),
+    [details],
+  )
+
   const recentBriefs = useMemo(() => {
     const all: Array<{
       workspaceId: number
@@ -100,23 +104,22 @@ export function DashboardPage() {
       mode: string
       createdAt: string
     }> = []
-    for (const workspace of workspaces) {
-      const list = briefs[workspace.id] ?? []
-      for (const brief of list) {
+    for (const detail of Object.values(details)) {
+      for (const brief of detail.briefs ?? []) {
         all.push({
-          workspaceId: workspace.id,
-          workspaceTitle: workspace.title,
+          workspaceId: detail.id,
+          workspaceTitle: detail.title,
           title: brief.title,
           body: brief.body,
           mode: brief.mode,
-          createdAt: brief.createdAt,
+          createdAt: brief.created_at,
         })
       }
     }
     return all
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 4)
-  }, [briefs, workspaces])
+  }, [details])
 
   async function handleCreate() {
     const created = await createWorkspace()
@@ -156,7 +159,7 @@ export function DashboardPage() {
         </article>
         <article className="stat-card">
           <p className="stat-card-label">Saved briefs</p>
-          <p className="stat-card-value">{recentBriefs.length}</p>
+          <p className="stat-card-value">{totalBriefs}</p>
         </article>
       </section>
 
@@ -285,8 +288,8 @@ export function DashboardPage() {
             />
           ) : (
             <ul className="dashboard-list">
-              {recentBriefs.map((brief, index) => (
-                <li key={`${brief.workspaceId}-${index}`}>
+              {recentBriefs.map((brief) => (
+                <li key={`${brief.workspaceId}-${brief.createdAt}-${brief.title}`}>
                   <Link
                     to={`/workspaces/${brief.workspaceId}/synthesis`}
                     className="dashboard-list-row"

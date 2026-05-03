@@ -5,6 +5,8 @@ export type Paper = {
   external_id: string
   title: string
   abstract: string | null
+  /** User-provided text; used in synthesis before catalog abstract when set. */
+  abstract_override?: string | null
   authors: string[]
   venue: string | null
   year: number | null
@@ -57,6 +59,29 @@ export type SearchHistory = {
   created_at: string
 }
 
+export type WorkspaceBrief = {
+  id: number
+  mode: string
+  style: string
+  title: string
+  body: string
+  source_papers: Paper[]
+  created_at: string
+}
+
+export type WorkspaceStateEntry = {
+  state_key: string
+  value: Record<string, unknown>
+  updated_at: string
+}
+
+export type PaperNote = {
+  source: string
+  external_id: string
+  note: string
+  updated_at: string
+}
+
 export type WorkspaceSummary = {
   id: number
   title: string
@@ -70,6 +95,9 @@ export type WorkspaceSummary = {
 export type WorkspaceDetail = WorkspaceSummary & {
   saved_papers: Paper[]
   searches: SearchHistory[]
+  briefs: WorkspaceBrief[]
+  state: WorkspaceStateEntry[]
+  paper_notes: PaperNote[]
 }
 
 export const SOURCE_OPTIONS: Array<{ key: SourceKey; label: string; tone: string }> = [

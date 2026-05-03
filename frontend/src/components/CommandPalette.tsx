@@ -23,21 +23,23 @@ export function CommandPalette() {
       const isMod = event.metaKey || event.ctrlKey
       if (isMod && event.key.toLowerCase() === 'k') {
         event.preventDefault()
-        setIsOpen((value) => !value)
+        setIsOpen((value) => {
+          const next = !value
+          if (next) {
+            queueMicrotask(() => {
+              setQuery('')
+              setActiveIndex(0)
+              requestAnimationFrame(() => inputRef.current?.focus())
+            })
+          }
+          return next
+        })
       } else if (event.key === 'Escape' && isOpen) {
         setIsOpen(false)
       }
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [isOpen])
-
-  useEffect(() => {
-    if (isOpen) {
-      setQuery('')
-      setActiveIndex(0)
-      requestAnimationFrame(() => inputRef.current?.focus())
-    }
   }, [isOpen])
 
   const commands = useMemo<Command[]>(() => {

@@ -1,41 +1,55 @@
+from __future__ import annotations
+
+import re
 from typing import Literal
 
 import httpx
 
 from app.core.config import get_settings
+from app.services.paper_prompt import papers_to_llm_context
+from app.services.research_sources import enrich_missing_abstracts
 
 
-settings = get_settings()
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
 SynthesisMode = Literal["summary", "compare", "question"]
 
-
-def _paper_context(papers: list[dict]) -> str:
-    lines: list[str] = []
-    for index, paper in enumerate(papers, start=1):
-        authors = ", ".join(paper.get("authors") or []) or "Unknown authors"
-        lines.append(
-            "\n".join(
-                [
-                    f"Paper {index}: {paper.get('title', 'Untitled')}",
-                    f"Source: {paper.get('source', 'unknown')}",
-                    f"Authors: {authors}",
-                    f"Venue: {paper.get('venue') or 'Unknown venue'}",
-                    f"Year: {paper.get('year') or 'Unknown'}",
-                    f"Citations: {paper.get('citation_count') if paper.get('citation_count') is not None else 'Unknown'}",
-                    f"Abstract: {paper.get('abstract') or 'No abstract available.'}",
-                ]
-            )
-        )
-    return "\n\n".join(lines)
+_PLAIN_OUTPUT_RULE = (
+    "Formatting: plain text only. Do not use Markdown (no ** or __ for bold, no # headings, no backticks). "
+    "Write section titles as a single plain line, then a blank line, then the section body."
+)
 
 
-def _prompt_for_mode(mode: SynthesisMode, question: str | None) -> str:
+def _strip_markdown_noise(text: str) -> str:
+    """Remove common Markdown tokens the model may still emit."""
+    s = text
+    s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)
+    s = re.sub(r"__([^_]+)__", r"\1", s)
+    s = re.sub(r"(?m)^#{1,6}\s+", "", s)
+    return s
+
+
+def _style_instruction(style: str) -> str:
+    normalized = (style or "balanced").strip().lower()
+    if normalized == "concise":
+        return "Keep the synthesis short: 1-2 tight paragraphs or 3-5 bullets per section."
+    if normalized == "deep":
+        return "Write a deeper research brief with more detail on methods, evidence, and caveats."
+    if normalized == "methods":
+        return "Emphasize methods, datasets, evaluation setup, assumptions, and reproducibility."
+    if normalized == "limitations":
+        return "Emphasize limitations, missing evidence, threats to validity, and open questions."
+    return "Balance high-level takeaways with enough detail for a researcher deciding what to read next."
+
+
+def _prompt_for_mode(mode: SynthesisMode, question: str | None, style: str) -> str:
     if mode == "summary":
         return (
             "Write a concise but high-signal synthesis of the selected papers.\n"
-            "Use these section headers exactly:\n"
+            f"{_style_instruction(style)}\n"
+            f"{_PLAIN_OUTPUT_RULE}\n"
+            "Citations: reference papers inline using [1], [2], etc. matching the Paper numbers below.\n"
+            "Use these section headers exactly (plain lines, no asterisks):\n"
             "Overview\n"
             "Key Themes\n"
             "Method Patterns\n"
@@ -45,7 +59,10 @@ def _prompt_for_mode(mode: SynthesisMode, question: str | None) -> str:
     if mode == "compare":
         return (
             "Compare the selected papers directly.\n"
-            "Use these section headers exactly:\n"
+            f"{_style_instruction(style)}\n"
+            f"{_PLAIN_OUTPUT_RULE}\n"
+            "Citations: reference papers inline using [1], [2], etc. matching the Paper numbers below.\n"
+            "Use these section headers exactly (plain lines, no asterisks):\n"
             "Research Question\n"
             "Methods And Evidence\n"
             "Where They Agree\n"
@@ -55,7 +72,10 @@ def _prompt_for_mode(mode: SynthesisMode, question: str | None) -> str:
         )
     return (
         f"Answer this research question using only the selected papers: {question or 'No question provided.'}\n"
-        "Use these section headers exactly:\n"
+        f"{_style_instruction(style)}\n"
+        f"{_PLAIN_OUTPUT_RULE}\n"
+        "Citations: reference papers inline using [1], [2], etc. matching the Paper numbers below.\n"
+        "Use these section headers exactly (plain lines, no asterisks):\n"
         "Short Answer\n"
         "Evidence From The Selected Papers\n"
         "Limits Of The Evidence"
@@ -63,17 +83,19 @@ def _prompt_for_mode(mode: SynthesisMode, question: str | None) -> str:
 
 
 def is_research_llm_configured() -> bool:
-    return bool(settings.cerebras_api_key)
+    return bool(get_settings().cerebras_api_key)
 
 
 async def synthesize_research(
     mode: SynthesisMode,
     papers: list[dict],
+    style: str = "balanced",
     question: str | None = None,
 ) -> str:
     if not papers:
         return "Select at least one paper first."
 
+    settings = get_settings()
     if not settings.cerebras_api_key:
         titles = ", ".join(paper.get("title", "Untitled") for paper in papers[:5])
         if mode == "summary":
@@ -83,16 +105,17 @@ async def synthesize_research(
         return f"Selected papers: {titles}. Add a Cerebras API key to answer research questions across them."
 
     prompt = f"""
-You are a careful research companion. Use only the selected paper metadata and abstracts below.
+You are a careful research companion. Use only the selected paper metadata and abstract blocks below.
+When an abstract is missing from catalogs, follow the instructions in that paper's block: do not treat thin metadata as full evidence.
 Do not invent findings that are not supported by the provided papers.
 When comparing papers, be explicit about uncertainty and missing details.
-Write in clear sections with the requested headers.
+Write in clear sections with the requested headers. Remember: plain text only, no Markdown emphasis.
 
 Task:
-{_prompt_for_mode(mode, question)}
+{_prompt_for_mode(mode, question, style)}
 
 Selected papers:
-{_paper_context(papers)}
+{papers_to_llm_context(papers)}
 """
 
     payload = {
@@ -100,7 +123,11 @@ Selected papers:
         "messages": [
             {
                 "role": "system",
-                "content": "You are a precise research assistant who synthesizes papers carefully.",
+                "content": (
+                    "You are a precise research assistant who synthesizes papers carefully. "
+                    "Always respond in plain text: no Markdown bold/italic markers (no ** or __), "
+                    "no hash headings, no fenced code unless the user explicitly asks for code."
+                ),
             },
             {"role": "user", "content": prompt},
         ],
@@ -114,6 +141,7 @@ Selected papers:
     }
 
     async with httpx.AsyncClient(timeout=60) as client:
+        await enrich_missing_abstracts(client, papers)
         response = await client.post(CEREBRAS_URL, headers=headers, json=payload)
         if response.status_code >= 400:
             try:
@@ -131,4 +159,5 @@ Selected papers:
             )
         data = response.json()
 
-    return data["choices"][0]["message"]["content"]
+    raw = data["choices"][0]["message"]["content"]
+    return _strip_markdown_noise(raw)

@@ -1,9 +1,11 @@
 import httpx
+from typing import Any, Dict, List, Optional
 
 from app.core.config import get_settings
+from app.services.paper_prompt import papers_to_llm_context
+from app.services.research_sources import enrich_missing_abstracts
 
 
-settings = get_settings()
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
 
@@ -32,28 +34,11 @@ def _heuristic_rationale(paper: dict, index: int) -> str:
     return "Read after the overview papers to deepen your understanding with a more specific contribution."
 
 
-def _paper_context(papers: list[dict]) -> str:
-    lines: list[str] = []
-    for index, paper in enumerate(papers, start=1):
-        lines.append(
-            "\n".join(
-                [
-                    f"Paper {index}: {paper.get('title', 'Untitled')}",
-                    f"Authors: {', '.join(paper.get('authors') or []) or 'Unknown authors'}",
-                    f"Venue: {paper.get('venue') or 'Unknown venue'}",
-                    f"Year: {paper.get('year') or 'Unknown'}",
-                    f"Citations: {paper.get('citation_count') if paper.get('citation_count') is not None else 'Unknown'}",
-                    f"Abstract: {paper.get('abstract') or 'No abstract available.'}",
-                ]
-            )
-        )
-    return "\n\n".join(lines)
-
-
-async def build_reading_path(objective: str | None, papers: list[dict]) -> dict:
+async def build_reading_path(objective: Optional[str], papers: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not papers:
         return {"objective": objective or "Understand this topic", "overview": "Select papers first.", "steps": []}
 
+    settings = get_settings()
     if not settings.cerebras_api_key:
         ordered = sorted(papers, key=_heuristic_priority, reverse=True)
         steps = [
@@ -93,7 +78,7 @@ Return JSON with this shape only:
 }}
 
 Selected papers:
-{_paper_context(papers)}
+{papers_to_llm_context(papers)}
 """
 
     payload = {
@@ -116,6 +101,7 @@ Selected papers:
     }
 
     async with httpx.AsyncClient(timeout=60) as client:
+        await enrich_missing_abstracts(client, papers)
         response = await client.post(CEREBRAS_URL, headers=headers, json=payload)
         if response.status_code >= 400:
             ordered = sorted(papers, key=_heuristic_priority, reverse=True)

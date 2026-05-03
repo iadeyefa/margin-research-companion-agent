@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -15,16 +16,17 @@ class ResearchSavedPaper(Base):
     source: Mapped[str] = mapped_column(String(64), nullable=False)
     external_id: Mapped[str] = mapped_column(String(512), nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
-    abstract: Mapped[str | None] = mapped_column(Text)
-    authors: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    venue: Mapped[str | None] = mapped_column(String(512))
-    year: Mapped[int | None] = mapped_column(Integer)
-    publication_date: Mapped[str | None] = mapped_column(String(32))
-    doi: Mapped[str | None] = mapped_column(String(255))
-    url: Mapped[str | None] = mapped_column(Text)
-    pdf_url: Mapped[str | None] = mapped_column(Text)
-    citation_count: Mapped[int | None] = mapped_column(Integer)
-    open_access: Mapped[bool | None] = mapped_column(Boolean)
+    abstract: Mapped[Optional[str]] = mapped_column(Text)
+    abstract_override: Mapped[Optional[str]] = mapped_column(Text)
+    authors: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    venue: Mapped[Optional[str]] = mapped_column(String(512))
+    year: Mapped[Optional[int]] = mapped_column(Integer)
+    publication_date: Mapped[Optional[str]] = mapped_column(String(32))
+    doi: Mapped[Optional[str]] = mapped_column(String(255))
+    url: Mapped[Optional[str]] = mapped_column(Text)
+    pdf_url: Mapped[Optional[str]] = mapped_column(Text)
+    citation_count: Mapped[Optional[int]] = mapped_column(Integer)
+    open_access: Mapped[Optional[bool]] = mapped_column(Boolean)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     workspace = relationship("ResearchWorkspace", back_populates="saved_papers")

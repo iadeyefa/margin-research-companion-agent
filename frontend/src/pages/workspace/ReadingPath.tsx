@@ -44,14 +44,25 @@ export function ReadingPathTab() {
         initialProgress[`${step.source}::${step.external_id}`] = 'unread'
       }
       setProgress(initialProgress)
-      recordBrief(id, {
-        mode: 'reading_path',
-        title: `Reading path · ${response.steps.length} steps`,
-        body: `${response.objective}\n\n${response.overview}\n\n${response.steps
-          .map((step) => `${step.order}. ${step.title}\n   ${step.rationale}`)
-          .join('\n\n')}`,
-      })
-      pushToast('Reading path generated.', 'success')
+      try {
+        await recordBrief(id, {
+          mode: 'reading_path',
+          style: 'balanced',
+          title: `Reading path · ${response.steps.length} steps`,
+          body: `${response.objective}\n\n${response.overview}\n\n${response.steps
+            .map((step) => `${step.order}. ${step.title}\n   ${step.rationale}`)
+            .join('\n\n')}`,
+          source_papers: papers,
+        })
+        pushToast('Reading path generated and saved.', 'success')
+      } catch (saveErr) {
+        pushToast(
+          saveErr instanceof Error
+            ? `Reading path ready, but saving history failed: ${saveErr.message}`
+            : 'Reading path ready, but saving history failed.',
+          'error',
+        )
+      }
     } catch (caught) {
       pushToast(caught instanceof Error ? caught.message : 'Failed to build reading path.', 'error')
     } finally {
@@ -129,6 +140,7 @@ export function ReadingPathTab() {
       {!path ? (
         <EmptyState
           size="lg"
+          icon="🗺️"
           title="No path generated yet"
           description={
             papers.length === 0
@@ -186,21 +198,18 @@ export function ReadingPathTab() {
                       <strong>Why this comes next:</strong> {step.rationale}
                     </p>
                     <div className="reading-step-actions">
-                      {(['unread', 'reading', 'done'] as const).map((value) => (
-                        <button
-                          key={value}
-                          type="button"
-                          className={`pill-button${status === value ? ' is-primary' : ' is-ghost'}`}
-                          onClick={() =>
-                            setProgress((current) => ({
-                              ...current,
-                              [key]: value,
-                            }))
-                          }
-                        >
-                          {value === 'unread' ? 'Mark unread' : value === 'reading' ? 'Reading' : 'Mark done'}
-                        </button>
-                      ))}
+                      <button
+                        type="button"
+                        className={`reading-step-status-btn${status === 'reading' ? ' is-reading' : status === 'done' ? ' is-done' : ''}`}
+                        onClick={() =>
+                          setProgress((current) => ({
+                            ...current,
+                            [key]: status === 'unread' ? 'reading' : status === 'reading' ? 'done' : 'unread',
+                          }))
+                        }
+                      >
+                        {status === 'unread' ? '○ Start reading' : status === 'reading' ? '◉ Reading…' : '✓ Done'}
+                      </button>
                     </div>
                     <textarea
                       className="reading-step-note"

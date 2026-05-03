@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { LibraryPaper } from '../api/types'
@@ -19,7 +19,7 @@ export function LibraryPage() {
   const [openAccessOnly, setOpenAccessOnly] = useState(false)
   const [sort, setSort] = useState<SortKey>('recent')
 
-  async function reload() {
+  const reload = useCallback(async () => {
     setLoading(true)
     try {
       const data = await api.listLibrary()
@@ -29,11 +29,11 @@ export function LibraryPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [pushToast])
 
   useEffect(() => {
     void reload()
-  }, [workspaces.length])
+  }, [reload, workspaces.length])
 
   const sources = useMemo(() => Array.from(new Set(papers.map((paper) => paper.source))), [papers])
 

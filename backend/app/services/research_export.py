@@ -25,6 +25,10 @@ def export_bibtex(papers: list[dict]) -> str:
     return "\n\n".join(entries)
 
 
+def _summary_text(paper: dict) -> str:
+    return (paper.get("abstract_override") or paper.get("abstract") or "").strip()
+
+
 def export_markdown(papers: list[dict]) -> str:
     lines = ["# Reading List", ""]
     for paper in papers:
@@ -39,7 +43,8 @@ def export_markdown(papers: list[dict]) -> str:
             lines.append(f"  - DOI: {paper['doi']}")
         if paper.get("url"):
             lines.append(f"  - Link: {paper['url']}")
-        if paper.get("abstract"):
-            lines.append(f"  - Summary: {paper['abstract']}")
+        summary = _summary_text(paper)
+        if summary:
+            lines.append(f"  - Summary: {summary}")
         lines.append("")
     return "\n".join(lines).strip()
