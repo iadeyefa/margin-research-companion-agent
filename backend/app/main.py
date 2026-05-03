@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import health, research, workspaces
@@ -22,6 +22,27 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Research Companion Agent API", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def disable_caching_for_api(request: Request, call_next):
+    """Avoid stale workspace JSON (e.g. missing new `briefs`) after reload in some browsers/proxies."""
+    response = await call_next(request)
+    if request.url.path.startswith("/api"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
+@app.get("/")
+def root():
+    """Base URL has no API surface; everything lives under /api and /docs."""
+    return {
+        "service": app.title,
+        "docs": "/docs",
+        "health": "/api/health/",
+        "workspaces": "/api/workspaces/",
+    }
+
 
 origins = (
     [

@@ -11,11 +11,12 @@ function formatRelative(value: string): string {
 export function HistoryTab() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const id = Number(workspaceId)
-  const { workspaceDetails, briefs } = useWorkspaceStore()
+  const { workspaceDetails, deleteBrief } = useWorkspaceStore()
   const detail = workspaceDetails[id]
-  const briefsForWorkspace = briefs[id] ?? []
 
   if (!detail) return <p className="muted">Loading…</p>
+
+  const briefsForWorkspace = detail.briefs ?? []
 
   return (
     <div className="history-tab">
@@ -51,15 +52,28 @@ export function HistoryTab() {
         ) : (
           <ul className="dashboard-list">
             {briefsForWorkspace.map((brief) => (
-              <li key={brief.createdAt}>
-                <div className="dashboard-list-row dashboard-list-row-static">
-                  <span className="dashboard-list-icon">✦</span>
-                  <div className="dashboard-list-body">
-                    <p className="dashboard-list-title">{brief.title}</p>
-                    <p className="dashboard-list-meta">
-                      {brief.mode} · {formatRelative(brief.createdAt)}
-                    </p>
+              <li key={brief.id}>
+                <div className="dashboard-list-row dashboard-list-row-static brief-history-row">
+                  <div className="brief-history-row-main">
+                    <span className="dashboard-list-icon">✦</span>
+                    <div className="dashboard-list-body">
+                      <p className="dashboard-list-title">{brief.title}</p>
+                      <p className="dashboard-list-meta">
+                        {brief.mode} · {formatRelative(brief.created_at)}
+                      </p>
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => {
+                      if (window.confirm(`Remove this brief from history?`)) {
+                        void deleteBrief(id, brief.id)
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
                 </div>
               </li>
             ))}

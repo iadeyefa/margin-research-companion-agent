@@ -6,6 +6,7 @@ import { EmptyState } from '../../components/EmptyState'
 import { useWorkspaceStore } from '../../state/WorkspaceStore'
 
 type SynthesisMode = 'summary' | 'compare' | 'question' | 'extract'
+type SynthesisStyle = 'balanced' | 'concise' | 'deep' | 'methods' | 'limitations'
 
 const MODES: Array<{ key: SynthesisMode; label: string; description: string }> = [
   {
@@ -33,8 +34,10 @@ const MODES: Array<{ key: SynthesisMode; label: string; description: string }> =
 export function SynthesisTab() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const id = Number(workspaceId)
-  const { selection, briefs, recordBrief, pushToast, togglePaperSelection } = useWorkspaceStore()
+  const { selection, workspaceDetails, recordBrief, deleteBrief, pushToast, togglePaperSelection } =
+    useWorkspaceStore()
   const [mode, setMode] = useState<SynthesisMode>('summary')
+  const [style, setStyle] = useState<SynthesisStyle>('balanced')
   const [question, setQuestion] = useState('')
   const [output, setOutput] = useState('')
   const [running, setRunning] = useState(false)
@@ -62,6 +65,7 @@ export function SynthesisTab() {
       if (mode === 'extract') {
         const response = await api.synthesize({
           mode: 'question',
+          style,
           question:
             'For each paper, extract the main method, datasets used, key findings, and limitations. Format the answer as a markdown list, one section per paper.',
           papers,
@@ -71,6 +75,7 @@ export function SynthesisTab() {
       } else {
         const response = await api.synthesize({
           mode,
+          style,
           question: mode === 'question' ? question.trim() : null,
           papers,
         })
@@ -80,8 +85,17 @@ export function SynthesisTab() {
         else title = `Summary · ${papers.length} papers`
       }
       setOutput(body)
-      recordBrief(id, { mode, title, body })
-      pushToast('Brief generated and saved.', 'success')
+      try {
+        await recordBrief(id, { mode, style, title, body, source_papers: papers })
+        pushToast('Brief generated and saved.', 'success')
+      } catch (saveErr) {
+        pushToast(
+          saveErr instanceof Error
+            ? `Synthesis finished, but saving the brief failed: ${saveErr.message}`
+            : 'Synthesis finished, but saving the brief failed.',
+          'error',
+        )
+      }
     } catch (caught) {
       pushToast(caught instanceof Error ? caught.message : 'Synthesis failed.', 'error')
     } finally {
@@ -89,7 +103,7 @@ export function SynthesisTab() {
     }
   }
 
-  const briefsForWorkspace = briefs[id] ?? []
+  const briefsForWorkspace = workspaceDetails[id]?.briefs ?? []
 
   return (
     <div className="synthesis-tab">
@@ -123,8 +137,33 @@ export function SynthesisTab() {
           ))}
         </div>
 
+        <div className="synthesis-style-bar">
+          <span className="synthesis-style-label">Style</span>
+          <div className="synthesis-style-chips">
+            {(
+              [
+                { value: 'balanced', label: 'Balanced' },
+                { value: 'concise', label: 'Concise' },
+                { value: 'deep', label: 'Deep' },
+                { value: 'methods', label: 'Methods' },
+                { value: 'limitations', label: 'Limitations' },
+              ] as Array<{ value: SynthesisStyle; label: string }>
+            ).map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={`synthesis-style-chip${style === option.value ? ' is-active' : ''}`}
+                onClick={() => setStyle(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {papers.length === 0 ? (
           <EmptyState
+            icon="✳️"
             title="Nothing selected"
             description={
               <>
@@ -179,7 +218,32 @@ export function SynthesisTab() {
 
         {output && (
           <article className="synthesis-output">
-            <pre>{output}</pre>
+            <div className="synthesis-output-header">
+              <span>Generated output</span>
+              <button
+                type="button"
+                className="link-button"
+                style={{ textTransform: 'none', letterSpacing: 'normal' }}
+                onClick={() => {
+                  void navigator.clipboard.writeText(output)
+                  pushToast('Copied to clipboard', 'success')
+                }}
+              >
+                Copy
+              </button>
+            </div>
+            <div className="synthesis-output-body">
+              {output.split('\n\n').map((block, i) => {
+                const trimmed = block.trim()
+                if (!trimmed) return null
+                const isHeading =
+                  trimmed.length < 80 && !trimmed.includes('. ') && /^[A-Z]/.test(trimmed)
+                if (isHeading && output.split('\n\n').length > 2 && i > 0) {
+                  return <span key={i} className="synthesis-output-section-heading">{trimmed}</span>
+                }
+                return <p key={i}>{trimmed}</p>
+              })}
+            </div>
           </article>
         )}
       </section>
@@ -189,19 +253,74 @@ export function SynthesisTab() {
         <h2 className="surface-title">Saved briefs</h2>
         {briefsForWorkspace.length === 0 ? (
           <EmptyState
+            icon="📝"
             title="No briefs yet"
             description="Generated briefs from this workspace are stored here for future reference."
           />
         ) : (
           <ul className="brief-list">
             {briefsForWorkspace.map((brief) => (
-              <li key={brief.createdAt} className="brief-card">
+              <li key={brief.id} className="brief-card">
                 <div className="brief-card-header">
-                  <span className="brief-mode">{brief.mode}</span>
-                  <span className="muted">{new Date(brief.createdAt).toLocaleString()}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="brief-mode">{brief.mode.replace('_', ' ')}</span>
+                    {brief.style && brief.style !== 'balanced' && (
+                      <span className="brief-style-badge">{brief.style}</span>
+                    )}
+                    {brief.source_papers?.length > 0 && (
+                      <span className="brief-source-count">
+                        📄 {brief.source_papers.length} papers
+                      </span>
+                    )}
+                  </div>
+                  <div className="brief-card-header-actions">
+                    <span className="muted">{new Date(brief.created_at).toLocaleString()}</span>
+                    <button
+                      type="button"
+                      className="link-button"
+                      style={{ color: 'var(--error)' }}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Remove this brief from history?\n\n${brief.title.slice(0, 80)}${brief.title.length > 80 ? '…' : ''}`,
+                          )
+                        ) {
+                          void deleteBrief(id, brief.id)
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
-                <p className="brief-title">{brief.title}</p>
-                <pre className="brief-body">{brief.body}</pre>
+                <div className="brief-card-body">
+                  <p className="brief-title">{brief.title}</p>
+                  <p className="brief-body">{brief.body}</p>
+                  <div className="paper-actions">
+                    <button
+                      type="button"
+                      className="pill-button is-ghost"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(brief.body)
+                        pushToast('Brief copied to clipboard', 'success')
+                      }}
+                    >
+                      Copy
+                    </button>
+                    <button
+                      type="button"
+                      className="pill-button is-ghost"
+                      onClick={() => {
+                        setOutput(brief.body)
+                        if (brief.mode === 'summary' || brief.mode === 'compare' || brief.mode === 'question') {
+                          setMode(brief.mode)
+                        }
+                      }}
+                    >
+                      Reopen
+                    </button>
+                  </div>
+                </div>
               </li>
             ))}
           </ul>

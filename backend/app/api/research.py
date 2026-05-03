@@ -60,6 +60,7 @@ async def synthesize(payload: ResearchSynthesisRequest):
     response = await synthesize_research(
         mode=mode,
         papers=[paper.model_dump() for paper in payload.papers],
+        style=payload.style,
         question=payload.question,
     )
     return ResearchSynthesisResponse(mode=mode, response=response)

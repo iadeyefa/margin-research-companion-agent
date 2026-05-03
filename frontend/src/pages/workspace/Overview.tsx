@@ -19,7 +19,7 @@ function formatRelative(value: string): string {
 export function OverviewTab() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const id = Number(workspaceId)
-  const { workspaceDetails, briefs } = useWorkspaceStore()
+  const { workspaceDetails } = useWorkspaceStore()
   const detail = workspaceDetails[id]
 
   const themeChips = useMemo(() => {
@@ -51,7 +51,7 @@ export function OverviewTab() {
 
   const recentSearches = detail.searches.slice(0, 4)
   const recentPapers = detail.saved_papers.slice(0, 5)
-  const briefsForWorkspace = briefs[id] ?? []
+  const briefsForWorkspace = detail.briefs ?? []
   const firstNoteLine = detail.notes.split('\n').find((line) => line.trim().length > 0) ?? ''
 
   return (

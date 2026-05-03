@@ -26,6 +26,45 @@ class SearchHistoryRead(ApiModel):
     created_at: datetime
 
 
+class WorkspaceBriefRead(ApiModel):
+    id: int
+    mode: str
+    style: str
+    title: str
+    body: str
+    source_papers: List[ResearchPaper]
+    created_at: datetime
+
+
+class WorkspaceBriefCreate(ApiModel):
+    mode: str
+    style: str = "balanced"
+    title: str
+    body: str
+    source_papers: List[ResearchPaper] = []
+
+
+class WorkspaceStateRead(ApiModel):
+    state_key: str
+    value: dict
+    updated_at: datetime
+
+
+class WorkspaceStateUpdate(ApiModel):
+    value: dict
+
+
+class PaperNoteRead(ApiModel):
+    source: str
+    external_id: str
+    note: str
+    updated_at: datetime
+
+
+class PaperNoteUpdate(ApiModel):
+    note: str
+
+
 class WorkspaceSummary(ApiModel):
     id: int
     title: str
@@ -39,6 +78,9 @@ class WorkspaceSummary(ApiModel):
 class WorkspaceDetail(WorkspaceSummary):
     saved_papers: List[ResearchPaper]
     searches: List[SearchHistoryRead]
+    briefs: List[WorkspaceBriefRead]
+    state: List[WorkspaceStateRead]
+    paper_notes: List[PaperNoteRead]
 
 
 class LibraryPaper(ResearchPaper):

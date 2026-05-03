@@ -32,6 +32,15 @@ Margin is a full-stack research workspace for finding, saving, organizing, and s
 
 ## Local development
 
+### One-command dev
+
+```bash
+chmod +x scripts/dev.sh
+./scripts/dev.sh
+```
+
+This starts the API on [http://127.0.0.1:3000](http://127.0.0.1:3000) and the frontend on [http://127.0.0.1:5173](http://127.0.0.1:5173).
+
 ### 1. Start the backend
 
 ```bash
@@ -42,7 +51,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 3000
 ```
 
-The backend defaults to SQLite and will create `research_companion.db` locally.
+The backend defaults to SQLite and will create `backend/research_companion.db` (path is fixed relative to the backend package, not your shell’s current directory).
 
 ### 2. Start the frontend
 
@@ -74,7 +83,7 @@ DATABASE_URL=postgresql+psycopg://postgres:password@localhost:5433/research_comp
 Create `backend/.env` to override defaults when needed:
 
 ```bash
-DATABASE_URL=sqlite:///./research_companion.db
+# DATABASE_URL — omit for default SQLite at backend/research_companion.db
 REDIS_URL=redis://localhost:6379
 CEREBRAS_API_KEY=
 CEREBRAS_MODEL=llama3.1-8b
@@ -92,6 +101,16 @@ Notes:
 - `CEREBRAS_API_KEY` enables richer synthesis and reading-path generation.
 - Without a Cerebras key, the app falls back to lightweight heuristic responses for synthesis and reading paths.
 - `RESEARCH_CONTACT_EMAIL` is useful for APIs like Crossref and OpenAlex.
+- `GET /api/health/` reports whether the API and research LLM are configured.
+
+## Demo data
+
+```bash
+cd backend
+python3 scripts/seed_demo.py
+```
+
+This creates a demo workspace with saved papers and a persisted summary brief.
 
 ## Frontend experience
 

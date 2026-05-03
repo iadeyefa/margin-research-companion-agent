@@ -6,6 +6,7 @@ import type {
   SearchResponse,
   SortOption,
   SourceKey,
+  WorkspaceBrief,
   WorkspaceDetail,
   WorkspaceSummary,
 } from './types'
@@ -21,16 +22,29 @@ export class ApiError extends Error {
   }
 }
 
+function normalizeWorkspaceDetail(d: WorkspaceDetail): WorkspaceDetail {
+  return {
+    ...d,
+    saved_papers: Array.isArray(d.saved_papers) ? d.saved_papers : [],
+    searches: Array.isArray(d.searches) ? d.searches : [],
+    briefs: Array.isArray(d.briefs) ? d.briefs : [],
+    state: Array.isArray(d.state) ? d.state : [],
+    paper_notes: Array.isArray(d.paper_notes) ? d.paper_notes : [],
+  }
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${API_URL}${path}`
   let response: Response
   try {
+    const { headers: initHeaders, cache: initCache, ...restInit } = init ?? {}
     response = await fetch(url, {
+      ...restInit,
+      cache: initCache ?? 'no-store',
       headers: {
         'Content-Type': 'application/json',
-        ...(init?.headers ?? {}),
+        ...(initHeaders ?? {}),
       },
-      ...init,
     })
   } catch (err) {
     const hint =
@@ -62,12 +76,17 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listWorkspaces: () => requestJson<WorkspaceSummary[]>('/api/workspaces/'),
-  createWorkspace: (title: string) =>
-    requestJson<WorkspaceDetail>('/api/workspaces/', {
-      method: 'POST',
-      body: JSON.stringify({ title }),
-    }),
-  getWorkspace: (id: number) => requestJson<WorkspaceDetail>(`/api/workspaces/${id}`),
+  createWorkspace: async (title: string) =>
+    normalizeWorkspaceDetail(
+      await requestJson<WorkspaceDetail>('/api/workspaces/', {
+        method: 'POST',
+        body: JSON.stringify({ title }),
+      }),
+    ),
+  getWorkspace: async (id: number) =>
+    normalizeWorkspaceDetail(
+      await requestJson<WorkspaceDetail>(`/api/workspaces/${id}?_=${Date.now()}`),
+    ),
   updateWorkspace: (id: number, payload: { title?: string; notes?: string }) =>
     requestJson<WorkspaceSummary>(`/api/workspaces/${id}`, {
       method: 'PATCH',
@@ -85,6 +104,16 @@ export const api = {
       `/api/workspaces/${workspaceId}/papers/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}`,
       { method: 'DELETE' },
     ),
+  createBrief: (
+    workspaceId: number,
+    payload: { mode: string; style: string; title: string; body: string; source_papers: Paper[] },
+  ) =>
+    requestJson<WorkspaceBrief>(`/api/workspaces/${workspaceId}/briefs`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  deleteBrief: (workspaceId: number, briefId: number) =>
+    requestJson<void>(`/api/workspaces/${workspaceId}/briefs/${briefId}`, { method: 'DELETE' }),
   patchSavedPaper: (
     workspaceId: number,
     source: string,
@@ -111,6 +140,7 @@ export const api = {
     }),
   synthesize: (payload: {
     mode: 'summary' | 'compare' | 'question'
+    style: string
     question: string | null
     papers: Paper[]
   }) =>
@@ -129,4 +159,17 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   listLibrary: () => requestJson<LibraryPaper[]>('/api/library/papers'),
+  updateWorkspaceState: (workspaceId: number, key: string, value: Record<string, unknown>) =>
+    requestJson(`/api/workspaces/${workspaceId}/state/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ value }),
+    }),
+  updatePaperNote: (workspaceId: number, paper: Pick<Paper, 'source' | 'external_id'>, note: string) =>
+    requestJson(
+      `/api/workspaces/${workspaceId}/paper-notes/${encodeURIComponent(paper.source)}/${encodeURIComponent(paper.external_id)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ note }),
+      },
+    ),
 }

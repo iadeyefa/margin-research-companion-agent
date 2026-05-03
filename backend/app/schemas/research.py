@@ -39,6 +39,7 @@ class ResearchSearchResponse(ApiModel):
 
 class ResearchSynthesisRequest(ApiModel):
     mode: str
+    style: str = "balanced"
     question: Optional[str] = None
     papers: List[ResearchPaper]
 

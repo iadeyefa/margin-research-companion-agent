@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Paper } from '../api/types'
 import { SourceTag } from './SourceTag'
@@ -10,6 +10,8 @@ type PaperCardProps = {
   onToggleSelect: (paper: Paper) => void
   onSave?: (paper: Paper) => void
   onRemove?: (paper: Paper) => void
+  note?: string
+  onSaveNote?: (paper: Paper, note: string) => void
   variant?: 'full' | 'compact'
 }
 
@@ -20,9 +22,15 @@ export function PaperCard({
   onToggleSelect,
   onSave,
   onRemove,
+  note,
+  onSaveNote,
   variant = 'full',
 }: PaperCardProps) {
   const [showFullAbstract, setShowFullAbstract] = useState(false)
+  const [noteDraft, setNoteDraft] = useState(note ?? '')
+  useEffect(() => {
+    setNoteDraft(note ?? '')
+  }, [note])
   const detailRoute = `/papers/${encodeURIComponent(paper.source)}/${encodeURIComponent(paper.external_id)}`
   const abstract = paper.abstract ?? ''
   const isLongAbstract = abstract.length > 280
@@ -109,6 +117,24 @@ export function PaperCard({
               </a>
             )}
           </div>
+          {variant === 'full' && onSaveNote && (
+            <div className="paper-note-editor">
+              <textarea
+                className="reading-step-note"
+                placeholder="Private notes about this paper"
+                rows={2}
+                value={noteDraft}
+                onChange={(event) => setNoteDraft(event.target.value)}
+              />
+              <button
+                className="link-button"
+                type="button"
+                onClick={() => onSaveNote(paper, noteDraft)}
+              >
+                Save note
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </article>

@@ -5,7 +5,7 @@ import { useWorkspaceStore } from '../state/WorkspaceStore'
 
 export function SelectionBar() {
   const navigate = useNavigate()
-  const { selection, clearSelection, pushToast } = useWorkspaceStore()
+  const { selection, clearSelection, pushToast, recordBrief } = useWorkspaceStore()
   const [isExporting, setIsExporting] = useState(false)
 
   if (selection.papers.length === 0 || selection.workspaceId === null) return null
@@ -15,8 +15,17 @@ export function SelectionBar() {
     try {
       const response = await api.exportPapers({ format, papers: selection.papers })
       await navigator.clipboard.writeText(response.content)
+      if (selection.workspaceId !== null) {
+        await recordBrief(selection.workspaceId, {
+          mode: 'export',
+          style: format,
+          title: `${format === 'bibtex' ? 'BibTeX' : 'Markdown'} export · ${selection.papers.length} papers`,
+          body: response.content,
+          source_papers: selection.papers,
+        })
+      }
       pushToast(
-        `${format === 'bibtex' ? 'BibTeX' : 'Markdown'} for ${selection.papers.length} papers copied to clipboard.`,
+        `${format === 'bibtex' ? 'BibTeX' : 'Markdown'} copied and saved to history.`,
         'success',
       )
     } catch (caught) {

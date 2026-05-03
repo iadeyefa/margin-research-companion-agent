@@ -565,10 +565,18 @@ def _dedupe_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[str] = set()
     deduped: list[dict[str, Any]] = []
     for result in results:
-        key = (result.get("doi") or f"{result['source']}::{result['external_id']}").lower()
-        if key in seen:
+        doi = (result.get("doi") or "").strip().lower().replace("https://doi.org/", "")
+        title = re.sub(r"[^a-z0-9]+", " ", (result.get("title") or "").lower()).strip()
+        year = str(result.get("year") or "")
+        keys = {
+            f"doi::{doi}" if doi else "",
+            f"title::{title}::{year}" if title and year else "",
+            f"{result['source']}::{result['external_id']}".lower(),
+        }
+        keys.discard("")
+        if seen.intersection(keys):
             continue
-        seen.add(key)
+        seen.update(keys)
         deduped.append(result)
     return deduped
 

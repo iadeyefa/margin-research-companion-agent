@@ -6,7 +6,6 @@ from app.services.paper_prompt import papers_to_llm_context
 from app.services.research_sources import enrich_missing_abstracts
 
 
-settings = get_settings()
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
 
@@ -39,6 +38,7 @@ async def build_reading_path(objective: Optional[str], papers: List[Dict[str, An
     if not papers:
         return {"objective": objective or "Understand this topic", "overview": "Select papers first.", "steps": []}
 
+    settings = get_settings()
     if not settings.cerebras_api_key:
         ordered = sorted(papers, key=_heuristic_priority, reverse=True)
         steps = [
