@@ -1,9 +1,7 @@
-from __future__ import annotations
-
 import asyncio
 import xml.etree.ElementTree as ET
 from html import unescape
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote_plus
 
 import httpx
@@ -16,7 +14,7 @@ settings = get_settings()
 SUPPORTED_SOURCES = ("crossref", "semantic_scholar", "openalex", "pubmed", "arxiv")
 
 
-def _strip_tags(value: str | None) -> str | None:
+def _strip_tags(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
     return unescape(
@@ -280,12 +278,12 @@ def _dedupe_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
 async def search_publications(
     query: str,
     limit_per_source: int = 5,
-    sources: list[str] | None = None,
-    year_from: int | None = None,
-    year_to: int | None = None,
+    sources: Optional[List[str]] = None,
+    year_from: Optional[int] = None,
+    year_to: Optional[int] = None,
     open_access_only: bool = False,
     sort_by: str = "relevance",
-) -> tuple[list[dict[str, Any]], dict[str, str]]:
+) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     chosen_sources = [source for source in (sources or list(SUPPORTED_SOURCES)) if source in SUPPORTED_SOURCES]
     source_errors: dict[str, str] = {}
 
@@ -304,7 +302,7 @@ async def search_publications(
         )
 
     merged_results: list[dict[str, Any]] = []
-    for source, result in zip(chosen_sources, gathered, strict=True):
+    for source, result in zip(chosen_sources, gathered):
         if isinstance(result, Exception):
             source_errors[source] = str(result)
             continue

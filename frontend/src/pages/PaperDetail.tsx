@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { LibraryPaper, Paper } from '../api/types'
-import { paperKey } from '../api/types'
 import { PageHeader } from '../components/PageHeader'
 import { SourceTag } from '../components/SourceTag'
 import { EmptyState } from '../components/EmptyState'
@@ -276,5 +275,3 @@ export function PaperDetailPage() {
     </div>
   )
 }
-
-export { paperKey }

@@ -10,7 +10,7 @@ import type {
   WorkspaceSummary,
 } from './types'
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
+const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 export class ApiError extends Error {
   status: number
@@ -22,13 +22,29 @@ export class ApiError extends Error {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  })
+  const url = `${API_URL}${path}`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers ?? {}),
+      },
+      ...init,
+    })
+  } catch (err) {
+    const hint =
+      API_URL === ''
+        ? ' Start the API on port 3000 (e.g. uvicorn in backend/) so the Vite /api proxy can reach it.'
+        : ` This app’s API runs on port 3000 by default (not 8000). Set VITE_API_URL=http://localhost:3000 or remove it to use the dev proxy. Current: ${API_URL}`
+    const reason = err instanceof Error ? err.message : 'Network error'
+    throw new ApiError(
+      reason === 'Load failed' || reason === 'Failed to fetch'
+        ? `Cannot reach the API.${hint}`
+        : `${reason}.${hint}`,
+      0,
+    )
+  }
 
   if (!response.ok) {
     const message = await response.text()

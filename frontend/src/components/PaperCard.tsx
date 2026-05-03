@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { paperKey, type Paper } from '../api/types'
+import type { Paper } from '../api/types'
 import { SourceTag } from './SourceTag'
 
 type PaperCardProps = {
@@ -114,5 +114,3 @@ export function PaperCard({
     </article>
   )
 }
-
-export { paperKey }

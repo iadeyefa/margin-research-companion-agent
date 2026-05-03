@@ -1,4 +1,4 @@
-from __future__ import annotations
+from typing import List, Optional
 
 from app.schemas.common import ApiModel
 
@@ -7,39 +7,39 @@ class ResearchPaper(ApiModel):
     source: str
     external_id: str
     title: str
-    abstract: str | None = None
-    authors: list[str] = []
-    venue: str | None = None
-    year: int | None = None
-    publication_date: str | None = None
-    doi: str | None = None
-    url: str | None = None
-    pdf_url: str | None = None
-    citation_count: int | None = None
-    open_access: bool | None = None
+    abstract: Optional[str] = None
+    authors: List[str] = []
+    venue: Optional[str] = None
+    year: Optional[int] = None
+    publication_date: Optional[str] = None
+    doi: Optional[str] = None
+    url: Optional[str] = None
+    pdf_url: Optional[str] = None
+    citation_count: Optional[int] = None
+    open_access: Optional[bool] = None
 
 
 class ResearchSearchRequest(ApiModel):
     query: str
     limit_per_source: int = 5
-    sources: list[str] | None = None
-    workspace_id: int | None = None
-    year_from: int | None = None
-    year_to: int | None = None
+    sources: Optional[List[str]] = None
+    workspace_id: Optional[int] = None
+    year_from: Optional[int] = None
+    year_to: Optional[int] = None
     open_access_only: bool = False
     sort_by: str = "relevance"
 
 
 class ResearchSearchResponse(ApiModel):
     query: str
-    results: list[ResearchPaper]
-    source_errors: dict[str, str]
+    results: List[ResearchPaper]
+    source_errors: dict
 
 
 class ResearchSynthesisRequest(ApiModel):
     mode: str
-    question: str | None = None
-    papers: list[ResearchPaper]
+    question: Optional[str] = None
+    papers: List[ResearchPaper]
 
 
 class ResearchSynthesisResponse(ApiModel):
@@ -48,8 +48,8 @@ class ResearchSynthesisResponse(ApiModel):
 
 
 class ResearchReadingPathRequest(ApiModel):
-    objective: str | None = None
-    papers: list[ResearchPaper]
+    objective: Optional[str] = None
+    papers: List[ResearchPaper]
 
 
 class ReadingPathStep(ApiModel):
@@ -63,12 +63,12 @@ class ReadingPathStep(ApiModel):
 class ResearchReadingPathResponse(ApiModel):
     objective: str
     overview: str
-    steps: list[ReadingPathStep]
+    steps: List[ReadingPathStep]
 
 
 class ResearchExportRequest(ApiModel):
     format: str
-    papers: list[ResearchPaper]
+    papers: List[ResearchPaper]
 
 
 class ResearchExportResponse(ApiModel):

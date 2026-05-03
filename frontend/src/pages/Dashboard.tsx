@@ -25,14 +25,10 @@ function formatRelative(value: string): string {
 
 export function DashboardPage() {
   const navigate = useNavigate()
-  const { workspaces, briefs, createWorkspace, refreshWorkspaces } = useWorkspaceStore()
+  const { workspaces, briefs, createWorkspace } = useWorkspaceStore()
   const [details, setDetails] = useState<Record<number, WorkspaceDetail>>({})
   const [library, setLibrary] = useState<LibraryPaper[]>([])
   const [loadingLibrary, setLoadingLibrary] = useState(true)
-
-  useEffect(() => {
-    void refreshWorkspaces()
-  }, [refreshWorkspaces])
 
   useEffect(() => {
     const state = { cancelled: false }
@@ -59,20 +55,23 @@ export function DashboardPage() {
   }, [workspaces])
 
   useEffect(() => {
-    let cancelled = false
+    const state = { cancelled: false }
     async function loadLibrary() {
       setLoadingLibrary(true)
       try {
         const data = await api.listLibrary()
-        if (!cancelled) setLibrary(data)
+        if (!state.cancelled) setLibrary(data)
       } catch {
-        if (!cancelled) setLibrary([])
+        if (!state.cancelled) setLibrary([])
       } finally {
-        if (!cancelled) setLoadingLibrary(false)
+        if (!state.cancelled) setLoadingLibrary(false)
       }
     }
     void loadLibrary()
-  }, [workspaces.length])
+    return () => {
+      state.cancelled = true
+    }
+  }, [])
 
   const recentWorkspaces: WorkspaceSummary[] = useMemo(() => workspaces.slice(0, 6), [workspaces])
   const totalSaved = useMemo(() => library.length, [library])

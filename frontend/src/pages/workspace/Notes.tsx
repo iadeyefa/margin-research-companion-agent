@@ -8,16 +8,22 @@ export function NotesTab() {
   const id = Number(workspaceId)
   const { workspaceDetails, updateWorkspace } = useWorkspaceStore()
   const detail = workspaceDetails[id]
-  const [draft, setDraft] = useState(detail?.notes ?? '')
+  const notesFromServer = detail?.notes ?? ''
+  const [draft, setDraft] = useState(notesFromServer)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [isDirty, setIsDirty] = useState(false)
+  const [syncBaseline, setSyncBaseline] = useState(() => ({
+    id: detail?.id,
+    notes: notesFromServer,
+  }))
   const timerRef = useRef<number | null>(null)
 
-  useEffect(() => {
-    setDraft(detail?.notes ?? '')
+  if (detail?.id !== syncBaseline.id || notesFromServer !== syncBaseline.notes) {
+    setSyncBaseline({ id: detail?.id, notes: notesFromServer })
+    setDraft(notesFromServer)
     setIsDirty(false)
     setSavedAt(null)
-  }, [detail?.id, detail?.notes])
+  }
 
   useEffect(() => {
     if (!isDirty) return

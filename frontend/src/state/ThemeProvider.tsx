@@ -1,4 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import type { ReactNode } from 'react'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
@@ -21,14 +30,20 @@ function readStoredMode(): ThemeMode {
   return 'system'
 }
 
-function systemPrefersDark(): boolean {
+function subscribeSystemTheme(onChange: () => void) {
+  if (typeof window === 'undefined' || !window.matchMedia) return () => {}
+  const media = window.matchMedia('(prefers-color-scheme: dark)')
+  media.addEventListener('change', onChange)
+  return () => media.removeEventListener('change', onChange)
+}
+
+function getSystemThemeSnapshot(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
-function resolve(mode: ThemeMode): ResolvedTheme {
-  if (mode === 'system') return systemPrefersDark() ? 'dark' : 'light'
-  return mode
+function getServerSystemThemeSnapshot(): boolean {
+  return false
 }
 
 function applyTheme(resolved: ResolvedTheme) {
@@ -39,27 +54,21 @@ function applyTheme(resolved: ResolvedTheme) {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>(() => readStoredMode())
-  const [resolved, setResolved] = useState<ResolvedTheme>(() => resolve(readStoredMode()))
+  const systemDark = useSyncExternalStore(
+    subscribeSystemTheme,
+    getSystemThemeSnapshot,
+    getServerSystemThemeSnapshot,
+  )
+  const resolved: ResolvedTheme = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode
+
+  useLayoutEffect(() => {
+    applyTheme(resolved)
+  }, [resolved])
 
   useEffect(() => {
-    const next = resolve(mode)
-    setResolved(next)
-    applyTheme(next)
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(STORAGE_KEY, mode)
     }
-  }, [mode])
-
-  useEffect(() => {
-    if (mode !== 'system' || typeof window === 'undefined' || !window.matchMedia) return
-    const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const listener = () => {
-      const next: ResolvedTheme = media.matches ? 'dark' : 'light'
-      setResolved(next)
-      applyTheme(next)
-    }
-    media.addEventListener('change', listener)
-    return () => media.removeEventListener('change', listener)
   }, [mode])
 
   const setMode = useCallback((next: ThemeMode) => {
@@ -68,10 +77,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const toggle = useCallback(() => {
     setModeState((current) => {
-      if (current === 'system') return resolve('system') === 'dark' ? 'light' : 'dark'
+      if (current === 'system') return systemDark ? 'light' : 'dark'
       return current === 'dark' ? 'light' : 'dark'
     })
-  }, [])
+  }, [systemDark])
 
   const value = useMemo<ThemeValue>(() => ({ mode, resolved, setMode, toggle }), [mode, resolved, setMode, toggle])
 

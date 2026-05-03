@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 from datetime import datetime
+from typing import List, Optional
 
 from app.schemas.common import ApiModel
 from app.schemas.research import ResearchPaper
@@ -11,14 +10,14 @@ class WorkspaceCreate(ApiModel):
 
 
 class WorkspaceUpdate(ApiModel):
-    title: str | None = None
-    notes: str | None = None
+    title: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class SearchHistoryRead(ApiModel):
     id: int
     query: str
-    sources: list[str]
+    sources: List[str]
     result_count: int
     created_at: datetime
 
@@ -34,8 +33,8 @@ class WorkspaceSummary(ApiModel):
 
 
 class WorkspaceDetail(WorkspaceSummary):
-    saved_papers: list[ResearchPaper]
-    searches: list[SearchHistoryRead]
+    saved_papers: List[ResearchPaper]
+    searches: List[SearchHistoryRead]
 
 
 class LibraryPaper(ResearchPaper):

@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 import httpx
+from typing import Any, Dict, List, Optional
 
 from app.core.config import get_settings
 
@@ -52,7 +51,7 @@ def _paper_context(papers: list[dict]) -> str:
     return "\n\n".join(lines)
 
 
-async def build_reading_path(objective: str | None, papers: list[dict]) -> dict:
+async def build_reading_path(objective: Optional[str], papers: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not papers:
         return {"objective": objective or "Understand this topic", "overview": "Select papers first.", "steps": []}
 
