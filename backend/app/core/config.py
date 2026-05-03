@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     research_contact_email: str = ""
     semantic_scholar_api_key: str = ""
     openalex_api_key: str = ""
+    core_api_key: str = ""
     jwt_secret: str = "dev-secret"
     port: int = 3000
     node_env: str = "development"

@@ -14,6 +14,10 @@ class WorkspaceUpdate(ApiModel):
     notes: Optional[str] = None
 
 
+class SavedPaperUpdate(ApiModel):
+    abstract_override: Optional[str] = None
+
+
 class SearchHistoryRead(ApiModel):
     id: int
     query: str

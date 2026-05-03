@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import health, research, workspaces
 from app.core.config import get_settings
 from app.db.base import Base
+from app.db.migrations import apply_sqlite_migrations
 from app.db.session import engine
 from app import models  # noqa: F401
 
@@ -16,6 +17,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    apply_sqlite_migrations()
     yield
 
 

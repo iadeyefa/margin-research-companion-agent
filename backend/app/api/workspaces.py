@@ -9,6 +9,7 @@ from app.models.research_workspace import ResearchWorkspace
 from app.schemas.research import ResearchPaper
 from app.schemas.workspace import (
     LibraryPaper,
+    SavedPaperUpdate,
     WorkspaceCreate,
     WorkspaceDetail,
     WorkspaceSummary,
@@ -36,6 +37,7 @@ def list_library_papers(db: Session = Depends(get_db)):
             external_id=record.external_id,
             title=record.title,
             abstract=record.abstract,
+            abstract_override=record.abstract_override,
             authors=record.authors or [],
             venue=record.venue,
             year=record.year,
@@ -59,6 +61,7 @@ def _paper_schema(record: ResearchSavedPaper) -> ResearchPaper:
         external_id=record.external_id,
         title=record.title,
         abstract=record.abstract,
+        abstract_override=record.abstract_override,
         authors=record.authors or [],
         venue=record.venue,
         year=record.year,
@@ -184,6 +187,7 @@ def save_paper(workspace_id: int, payload: ResearchPaper, db: Session = Depends(
         pdf_url=payload.pdf_url,
         citation_count=payload.citation_count,
         open_access=payload.open_access,
+        abstract_override=payload.abstract_override,
     )
     db.add(paper)
     try:
@@ -193,6 +197,36 @@ def save_paper(workspace_id: int, payload: ResearchPaper, db: Session = Depends(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Paper already saved in workspace") from exc
 
     return payload
+
+
+@router.patch("/{workspace_id}/papers/{source}/{external_id:path}", response_model=ResearchPaper)
+def patch_saved_paper(
+    workspace_id: int,
+    source: str,
+    external_id: str,
+    payload: SavedPaperUpdate,
+    db: Session = Depends(get_db),
+):
+    paper = db.scalar(
+        select(ResearchSavedPaper).where(
+            ResearchSavedPaper.workspace_id == workspace_id,
+            ResearchSavedPaper.source == source,
+            ResearchSavedPaper.external_id == external_id,
+        )
+    )
+    if not paper:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved paper not found")
+
+    data = payload.model_dump(exclude_unset=True)
+    if "abstract_override" in data:
+        val = data["abstract_override"]
+        if val is None:
+            paper.abstract_override = None
+        else:
+            paper.abstract_override = val.strip() or None
+    db.commit()
+    db.refresh(paper)
+    return _paper_schema(paper)
 
 
 @router.delete("/{workspace_id}/papers/{source}/{external_id:path}")

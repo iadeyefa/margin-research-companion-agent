@@ -5,32 +5,14 @@ from typing import Literal
 import httpx
 
 from app.core.config import get_settings
+from app.services.paper_prompt import papers_to_llm_context
+from app.services.research_sources import enrich_missing_abstracts
 
 
 settings = get_settings()
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
 SynthesisMode = Literal["summary", "compare", "question"]
-
-
-def _paper_context(papers: list[dict]) -> str:
-    lines: list[str] = []
-    for index, paper in enumerate(papers, start=1):
-        authors = ", ".join(paper.get("authors") or []) or "Unknown authors"
-        lines.append(
-            "\n".join(
-                [
-                    f"Paper {index}: {paper.get('title', 'Untitled')}",
-                    f"Source: {paper.get('source', 'unknown')}",
-                    f"Authors: {authors}",
-                    f"Venue: {paper.get('venue') or 'Unknown venue'}",
-                    f"Year: {paper.get('year') or 'Unknown'}",
-                    f"Citations: {paper.get('citation_count') if paper.get('citation_count') is not None else 'Unknown'}",
-                    f"Abstract: {paper.get('abstract') or 'No abstract available.'}",
-                ]
-            )
-        )
-    return "\n\n".join(lines)
 
 
 def _prompt_for_mode(mode: SynthesisMode, question: str | None) -> str:
@@ -85,7 +67,8 @@ async def synthesize_research(
         return f"Selected papers: {titles}. Add a Cerebras API key to answer research questions across them."
 
     prompt = f"""
-You are a careful research companion. Use only the selected paper metadata and abstracts below.
+You are a careful research companion. Use only the selected paper metadata and abstract blocks below.
+When an abstract is missing from catalogs, follow the instructions in that paper's block: do not treat thin metadata as full evidence.
 Do not invent findings that are not supported by the provided papers.
 When comparing papers, be explicit about uncertainty and missing details.
 Write in clear sections with the requested headers.
@@ -94,7 +77,7 @@ Task:
 {_prompt_for_mode(mode, question)}
 
 Selected papers:
-{_paper_context(papers)}
+{papers_to_llm_context(papers)}
 """
 
     payload = {
@@ -116,6 +99,7 @@ Selected papers:
     }
 
     async with httpx.AsyncClient(timeout=60) as client:
+        await enrich_missing_abstracts(client, papers)
         response = await client.post(CEREBRAS_URL, headers=headers, json=payload)
         if response.status_code >= 400:
             try:

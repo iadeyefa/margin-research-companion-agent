@@ -8,6 +8,7 @@ class ResearchPaper(ApiModel):
     external_id: str
     title: str
     abstract: Optional[str] = None
+    abstract_override: Optional[str] = None
     authors: List[str] = []
     venue: Optional[str] = None
     year: Optional[int] = None

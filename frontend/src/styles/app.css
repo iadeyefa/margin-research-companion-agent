@@ -1062,6 +1062,9 @@ input[type="checkbox"] { width: auto; }
 .paper-detail-authors { margin: 0; font-size: 14px; color: var(--ink-soft); }
 .paper-detail-venue { margin: 4px 0 0; font-size: 13px; }
 .paper-detail-section-label { margin-top: 18px; }
+.paper-detail-hint { margin: 4px 0 10px; font-size: 13px; line-height: 1.45; }
+.paper-detail-override { margin-bottom: 10px; }
+.paper-detail-save-override { align-self: flex-start; margin-bottom: 8px; }
 .paper-detail-abstract { margin: 0; color: var(--ink); font-size: 14.5px; line-height: 1.6; white-space: pre-wrap; }
 .paper-detail-side { gap: 10px; }
 .paper-detail-select { margin-bottom: 8px; }

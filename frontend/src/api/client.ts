@@ -85,6 +85,16 @@ export const api = {
       `/api/workspaces/${workspaceId}/papers/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}`,
       { method: 'DELETE' },
     ),
+  patchSavedPaper: (
+    workspaceId: number,
+    source: string,
+    externalId: string,
+    payload: { abstract_override?: string | null },
+  ) =>
+    requestJson<Paper>(
+      `/api/workspaces/${workspaceId}/papers/${encodeURIComponent(source)}/${encodeURIComponent(externalId)}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+    ),
   search: (payload: {
     query: string
     limit_per_source: number

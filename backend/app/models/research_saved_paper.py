@@ -17,6 +17,7 @@ class ResearchSavedPaper(Base):
     external_id: Mapped[str] = mapped_column(String(512), nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     abstract: Mapped[Optional[str]] = mapped_column(Text)
+    abstract_override: Mapped[Optional[str]] = mapped_column(Text)
     authors: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     venue: Mapped[Optional[str]] = mapped_column(String(512))
     year: Mapped[Optional[int]] = mapped_column(Integer)

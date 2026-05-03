@@ -5,6 +5,8 @@ export type Paper = {
   external_id: string
   title: string
   abstract: string | null
+  /** User-provided text; used in synthesis before catalog abstract when set. */
+  abstract_override?: string | null
   authors: string[]
   venue: string | null
   year: number | null

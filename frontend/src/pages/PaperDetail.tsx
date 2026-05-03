@@ -14,12 +14,23 @@ export function PaperDetailPage() {
   const params = useParams<{ source: string; externalId: string }>()
   const location = useLocation()
   const state = (location.state ?? {}) as LocationState
-  const { workspaces, refreshWorkspaces, savePaper, removePaper, togglePaperSelection, isSelected, selection } =
-    useWorkspaceStore()
+  const {
+    workspaces,
+    refreshWorkspaces,
+    refreshWorkspace,
+    savePaper,
+    removePaper,
+    togglePaperSelection,
+    isSelected,
+    selection,
+    pushToast,
+  } = useWorkspaceStore()
 
   const [libraryEntry, setLibraryEntry] = useState<LibraryPaper | null>(null)
   const [loading, setLoading] = useState(true)
   const [chosenWorkspace, setChosenWorkspace] = useState<number | null>(state.workspaceId ?? null)
+  const [overrideDraft, setOverrideDraft] = useState('')
+  const [savingOverride, setSavingOverride] = useState(false)
 
   const decodedSource = params.source ? decodeURIComponent(params.source) : ''
   const decodedExternalId = params.externalId ? decodeURIComponent(params.externalId) : ''
@@ -55,6 +66,11 @@ export function PaperDetailPage() {
     if (state.paper) return state.paper
     return null
   }, [libraryEntry, state.paper])
+
+  useEffect(() => {
+    const o = paper?.abstract_override
+    setOverrideDraft(o && o.trim() ? o : '')
+  }, [paper?.abstract_override, paper?.source, paper?.external_id])
 
   const containingWorkspaces = useMemo(() => {
     if (!libraryEntry) return [] as Array<{ id: number; title: string }>
@@ -96,6 +112,29 @@ export function PaperDetailPage() {
 
   async function handleRemove(workspaceId: number) {
     await removePaper(workspaceId, paper as Paper)
+  }
+
+  async function saveAbstractOverride() {
+    if (!libraryEntry || !paper) return
+    setSavingOverride(true)
+    try {
+      const updated = await api.patchSavedPaper(
+        libraryEntry.workspace_id,
+        paper.source,
+        paper.external_id,
+        { abstract_override: overrideDraft.trim() ? overrideDraft.trim() : null },
+      )
+      setLibraryEntry({
+        ...libraryEntry,
+        abstract_override: updated.abstract_override ?? null,
+      })
+      await refreshWorkspace(libraryEntry.workspace_id)
+      pushToast('Saved. Synthesis will use this text before the catalog abstract.', 'success')
+    } catch (caught) {
+      pushToast(caught instanceof Error ? caught.message : 'Could not save notes.', 'error')
+    } finally {
+      setSavingOverride(false)
+    }
   }
 
   return (
@@ -149,11 +188,35 @@ export function PaperDetailPage() {
           </p>
           {paper.venue && <p className="muted paper-detail-venue">{paper.venue}{paper.publication_date ? ` · ${paper.publication_date}` : ''}</p>}
 
-          <p className="surface-eyebrow paper-detail-section-label">Abstract</p>
+          {libraryEntry && (
+            <>
+              <p className="surface-eyebrow paper-detail-section-label">Your abstract or notes</p>
+              <p className="muted paper-detail-hint">
+                Optional. Pasted text is sent to synthesis first when APIs have no abstract (or to override them).
+              </p>
+              <textarea
+                className="notes-input paper-detail-override"
+                rows={8}
+                value={overrideDraft}
+                onChange={(event) => setOverrideDraft(event.target.value)}
+                placeholder="Paste an abstract from the publisher, or add your own summary…"
+              />
+              <button
+                className="pill-button is-primary paper-detail-save-override"
+                type="button"
+                disabled={savingOverride}
+                onClick={() => void saveAbstractOverride()}
+              >
+                {savingOverride ? 'Saving…' : 'Save for synthesis'}
+              </button>
+            </>
+          )}
+
+          <p className="surface-eyebrow paper-detail-section-label">Catalog abstract</p>
           {paper.abstract ? (
             <p className="paper-detail-abstract">{paper.abstract}</p>
           ) : (
-            <p className="muted">No abstract available from this source.</p>
+            <p className="muted">No abstract from search APIs. Add your own above if this paper is in your library.</p>
           )}
         </section>
 
