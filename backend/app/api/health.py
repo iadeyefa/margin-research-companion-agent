@@ -21,6 +21,9 @@ async def health_check():
     if not llm_ok and settings.node_env == "development":
         content["config_hints"] = {
             **settings_env_diagnostics(),
-            "message": "Restart the API after adding CEREBRAS_API_KEY to backend/.env (or repo-root .env).",
+            "message": (
+                "LLM_PROVIDER auto tries Google when GOOGLE_API_KEY is set, then Ollama. "
+                "Configure backend/.env and restart — see README (Environment variables)."
+            ),
         }
     return JSONResponse(status_code=status.HTTP_200_OK, content=content)

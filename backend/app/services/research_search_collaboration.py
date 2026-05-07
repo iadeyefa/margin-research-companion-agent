@@ -6,10 +6,7 @@ import json
 import re
 from typing import Any, Literal
 
-import httpx
-
-from app.core.config import get_settings
-from app.services.research_llm import CEREBRAS_URL
+from app.services.research_model import invoke_research_llm, llm_configured
 from app.services.research_source_selection import _dedupe_keep_order, heuristic_sources_for
 from app.services.research_sources import SUPPORTED_SOURCES
 
@@ -28,6 +25,145 @@ _QUICK_AFTER_OPENER = [
     "Social science / policy / humanities",
     "I'm not sure — help me narrow it down",
 ]
+
+# User wants to proceed / has nothing further when model keeps asking loop questions.
+_ACK_PROCEED_SNIPPETS: frozenset[str] = frozenset(
+    [
+        "go",
+        "ok",
+        "okay",
+        "yes",
+        "yeah",
+        "yep",
+        "sure",
+        "proceed",
+        "continue",
+        "fine",
+        "nothing",
+        "none",
+        "no",
+        "nope",
+        "nah",
+        "search",
+        "run it",
+        "run search",
+        "start",
+        "start search",
+        "lets go",
+        "let's go",
+        "all set",
+        "go ahead",
+        "do it",
+        "that's all",
+        "thats all",
+        "looks good",
+        "sounds good",
+        "that's it",
+        "thats it",
+        "that's fine",
+        "thats fine",
+        "whatever",
+        "anything",
+        "no preference",
+        "you decide",
+    ]
+)
+
+
+def _normalized_user_ack(text: str) -> str:
+    t = text.strip().lower()
+    if not t:
+        return ""
+    t = re.sub(r"[^\w\s']+", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def _is_proceed_or_no_more_detail(text: str) -> bool:
+    """Treat short replies like 'nothing' / 'go' / 'that's fine' as 'no extra constraints.'"""
+    normalized = _normalized_user_ack(text)
+    if not normalized:
+        return False
+    if normalized in _ACK_PROCEED_SNIPPETS:
+        return True
+    if len(normalized) <= 3 and normalized in {"k", "y"}:
+        return True
+    extra = frozenset(
+        {
+            "not really",
+            "idk",
+            "i dont know",
+            "i don't know",
+            "nothing else",
+            "nothing more",
+            "no more",
+            "no thanks",
+            "that's it",
+            "thats it",
+        }
+    )
+    return normalized in extra
+
+
+def _prior_assistant_text(messages: list[dict[str, str]]) -> str:
+    """Assistant message immediately before the latest user utterance."""
+    if len(messages) < 2:
+        return ""
+    for m in reversed(messages[:-1]):
+        if str(m.get("role") or "") == "assistant":
+            return str(m.get("content") or "")
+    return ""
+
+
+def _substantive_user_blob(messages: list[dict[str, str]]) -> str:
+    """User lines with trailing acknowledge-only replies stripped."""
+    users = [str(m.get("content") or "").strip() for m in messages if m.get("role") == "user"]
+    while len(users) > 1 and _is_proceed_or_no_more_detail(users[-1]):
+        users.pop()
+    if users and len(users) == 1 and _is_proceed_or_no_more_detail(users[0]):
+        users = []
+    return "\n".join(users).strip()
+
+
+def _assistant_signals_more_questions(ast: str) -> bool:
+    a = ast.lower()
+    markers = (
+        "what else",
+        "anything else",
+        "should i know",
+        "before we search",
+        "tell me more",
+        "help me narrow",
+        "what area",
+        "which field",
+    )
+    return any(m in a for m in markers)
+
+
+def _should_force_heuristic_plan(messages: list[dict[str, str]]) -> bool:
+    """
+    Stateless loop guard: skip the planner when user affirms/no-more-detail but the transcript
+    already has enough substance to search.
+    """
+    if len(messages) < 2 or messages[-1].get("role") != "user":
+        return False
+    last_user = str(messages[-1].get("content") or "")
+    blob = _substantive_user_blob(messages)
+    if len(blob.strip()) < 8:
+        return False
+    if not _is_proceed_or_no_more_detail(last_user):
+        return False
+    prior_ast = _prior_assistant_text(messages)
+    # Already printed a catalog plan → user asking to execute / confirm.
+    if "i'll search" in prior_ast.lower():
+        return True
+    # Offline / failure copy still committed to catalogs.
+    if "offline routing" in prior_ast.lower():
+        return True
+    # Model stuck repeating follow-ups after user waived more detail.
+    if _assistant_signals_more_questions(prior_ast):
+        return True
+    return False
 
 
 def _extract_json(raw: str) -> dict[str, Any] | None:
@@ -57,6 +193,27 @@ def _cap_sources(ids: list[str], cap: int) -> list[str]:
     return cleaned[:cap]
 
 
+def _format_offline_failure_reason(reason: str, *, per_part: int = 120, max_parts: int = 4) -> str:
+    """Show each provider's error; avoid one long message hiding the next (e.g. Google 429 vs Ollama)."""
+    if not reason:
+        return ""
+    body = reason
+    prefix = "All LLM providers failed: "
+    if body.startswith(prefix):
+        body = body[len(prefix) :]
+    parts = [p.strip() for p in body.split(" | ") if p.strip()]
+    if not parts:
+        tail = "…" if len(reason) > per_part else ""
+        return (reason[:per_part] + tail) if len(reason) > per_part else reason
+    out: list[str] = []
+    for p in parts[:max_parts]:
+        if len(p) > per_part:
+            out.append(p[: per_part - 1] + "…")
+        else:
+            out.append(p)
+    return " | ".join(out)
+
+
 def opening_turn() -> dict[str, Any]:
     return {
         "phase": "asking",
@@ -66,7 +223,13 @@ def opening_turn() -> dict[str, Any]:
     }
 
 
-def _heuristic_plan_ready(user_blob: str, desired_catalog_count: int) -> dict[str, Any]:
+def _heuristic_plan_ready(
+    user_blob: str,
+    desired_catalog_count: int,
+    reason: str | None = None,
+    *,
+    narrative: Literal["offline", "execute"] = "offline",
+) -> dict[str, Any]:
     cap = _clamp_catalog_count(desired_catalog_count)
     trimmed = user_blob.strip()[:800]
     if len(trimmed) < 8:
@@ -78,12 +241,23 @@ def _heuristic_plan_ready(user_blob: str, desired_catalog_count: int) -> dict[st
         }
     resolved = heuristic_sources_for(trimmed)
     sources = _cap_sources(list(resolved), cap)
+    if narrative == "execute":
+        detail = ""
+    elif reason:
+        detail = (
+            "Offline routing picked catalogs because live provider call failed "
+            f"({_format_offline_failure_reason(reason)})."
+        )
+    else:
+        detail = "Offline routing picked catalogs because no live LLM provider is available."
+    lead = f"I'll search {', '.join(sources)} (up to {cap} catalogs)."
+    if narrative == "execute":
+        assistant_message = f"{lead} Running the search using your answers."
+    else:
+        assistant_message = f"{lead} {detail}".strip()
     return {
         "phase": "ready",
-        "assistant_message": (
-            f"I'll search {', '.join(sources)} (up to {cap} catalogs). "
-            "Offline routing picked catalogs — configure the assistant API key on the server for deeper back‑and‑forth."
-        ).strip(),
+        "assistant_message": assistant_message,
         "quick_replies": [],
         "search": {
             "query": trimmed[:400],
@@ -118,8 +292,14 @@ async def collaborate_search_turn(
 
     combined_user = "\n".join(m["content"] for m in messages if m.get("role") == "user")
 
-    settings = get_settings()
-    if not settings.cerebras_api_key:
+    # Loop guard: planner model often returns phase=asking after the user says "go"/"nothing"
+    # even though the transcript already holds a usable topic (stateless transcript only).
+    if llm_configured() and _should_force_heuristic_plan(messages):
+        blob = _substantive_user_blob(messages)
+        base = blob if len(blob.strip()) >= 8 else combined_user
+        return _heuristic_plan_ready(base, desired, reason=None, narrative="execute")
+
+    if not llm_configured():
         return _heuristic_plan_ready(combined_user, desired)
 
     system_prompt = (
@@ -131,6 +311,8 @@ async def collaborate_search_turn(
         "care about recent years, open access preference, and the best keyword query string.\n\n"
         f"Allowed source ids ONLY: {', '.join(SUPPORTED_SOURCES)}\n\n"
         "Respond with JSON ONLY and no prose outside the object:\n"
+        "If the user says they have NO more detail to add (nothing / go / OK) and the topic is already clear, "
+        'use phase \"ready\" with a complete search object immediately—do not ask again.\n'
         '{"phase":"asking"|"ready",'
         '"assistant_message":"friendly text shown to user (one paragraph max)",'
         '"quick_replies":["optional chip labels up to four short strings"],'
@@ -145,36 +327,19 @@ async def collaborate_search_turn(
         "}}"
     )
 
-    chat_payload: dict[str, Any] = {
-        "model": settings.cerebras_model,
-        "messages": [{"role": "system", "content": system_prompt}]
-        + [{"role": str(m["role"]), "content": str(m["content"])[:6000]} for m in messages],
-        "temperature": 0.25,
-        "max_tokens": 700,
-    }
-    headers = {
-        "Authorization": f"Bearer {settings.cerebras_api_key}",
-        "Content-Type": "application/json",
-    }
-
     try:
-        async with httpx.AsyncClient(timeout=55) as client:
-            resp = await client.post(CEREBRAS_URL, headers=headers, json=chat_payload)
-    except httpx.HTTPError:
-        return _heuristic_plan_ready(combined_user, desired)
-
-    if resp.status_code >= 400:
-        return _heuristic_plan_ready(combined_user, desired)
-
-    try:
-        data = resp.json()
-        raw = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError):
-        return _heuristic_plan_ready(combined_user, desired)
+        transcript = "\n".join(f"{m['role']}: {str(m['content'])[:1000]}" for m in messages)
+        raw, _ = await invoke_research_llm(
+            system_prompt=system_prompt,
+            user_prompt=transcript,
+            temperature=0.25,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _heuristic_plan_ready(combined_user, desired, reason=str(exc))
 
     parsed = _extract_json(str(raw))
     if not parsed:
-        return _heuristic_plan_ready(combined_user, desired)
+        return _heuristic_plan_ready(combined_user, desired, reason="model did not return valid JSON")
 
     phase = str(parsed.get("phase") or "asking").lower()
     assistant_message = str(parsed.get("assistant_message") or "").strip() or (
@@ -184,6 +349,21 @@ async def collaborate_search_turn(
     quick_replies: list[str] = []
     if isinstance(qr, list):
         quick_replies = [str(item).strip() for item in qr if str(item).strip()][:6]
+
+    last_user_txt = str(messages[-1].get("content") or "")
+    substantive = _substantive_user_blob(messages)
+    asm_lower = assistant_message.lower()
+    model_stuck_loop = (
+        phase != "ready"
+        and len(substantive.strip()) >= 8
+        and _is_proceed_or_no_more_detail(last_user_txt)
+        and (
+            _assistant_signals_more_questions(assistant_message)
+            or "what else should i know" in asm_lower
+        )
+    )
+    if model_stuck_loop:
+        return _heuristic_plan_ready(substantive, desired, reason=None, narrative="execute")
 
     if phase != "ready":
         return {"phase": "asking", "assistant_message": assistant_message, "quick_replies": quick_replies, "search": None}

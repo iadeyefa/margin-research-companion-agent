@@ -13,6 +13,9 @@ _REPO_ROOT_ENV = _BACKEND_DIR.parent / ".env"
 # Env vars that are optional secrets: an empty string in the shell must not mask backend/.env.
 _OPTIONAL_SECRET_ENV_NAMES = (
     "CEREBRAS_API_KEY",
+    "GOOGLE_API_KEY",
+    "OLLAMA_API_KEY",
+    "LANGSMITH_API_KEY",
     "SEMANTIC_SCHOLAR_API_KEY",
     "OPENALEX_API_KEY",
     "CORE_API_KEY",
@@ -25,9 +28,12 @@ def _prepare_env_files() -> None:
         raw = os.environ.get(name)
         if raw is not None and not raw.strip():
             os.environ.pop(name, None)
-    for path in (_ENV_PATH, _REPO_ROOT_ENV):
-        if path.is_file():
-            load_dotenv(path, override=False)
+    # backend/.env is the app's source of truth; must beat stale shell exports
+    # (e.g. OLLAMA_MODEL=... left in ~/.zprofile from older setup).
+    if _ENV_PATH.is_file():
+        load_dotenv(_ENV_PATH, override=True)
+    if _REPO_ROOT_ENV.is_file():
+        load_dotenv(_REPO_ROOT_ENV, override=False)
 
 
 def _default_sqlite_url() -> str:
@@ -42,6 +48,13 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
     cerebras_api_key: str = ""
     cerebras_model: str = "llama3.1-8b"
+    llm_provider: str = "auto"
+    google_api_key: str = ""
+    google_model: str = "gemini-2.0-flash-lite"
+    ollama_api_key: str = ""
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "llama3.2:latest"
+    langsmith_api_key: str = ""
     research_contact_email: str = ""
     semantic_scholar_api_key: str = ""
     openalex_api_key: str = ""
@@ -62,6 +75,9 @@ class Settings(BaseSettings):
 
     @field_validator(
         "cerebras_api_key",
+        "google_api_key",
+        "ollama_api_key",
+        "langsmith_api_key",
         "semantic_scholar_api_key",
         "openalex_api_key",
         "core_api_key",

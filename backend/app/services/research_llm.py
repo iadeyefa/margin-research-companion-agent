@@ -7,12 +7,9 @@ from typing import Any, Literal, TypedDict
 import httpx
 from langgraph.graph import END, StateGraph
 
-from app.core.config import get_settings
 from app.services.paper_prompt import papers_to_llm_context
+from app.services.research_model import invoke_research_llm, llm_configured
 from app.services.research_sources import enrich_missing_abstracts
-
-
-CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
 SynthesisMode = Literal["summary", "compare", "question"]
 
@@ -95,7 +92,7 @@ def _instructions_suffix(instructions: str | None) -> str:
 
 
 def is_research_llm_configured() -> bool:
-    return bool(get_settings().cerebras_api_key)
+    return llm_configured()
 
 
 class SynthesisState(TypedDict, total=False):
@@ -127,70 +124,42 @@ Selected papers:
     return {"prompt": prompt}
 
 
-async def _call_cerebras_node(state: SynthesisState) -> SynthesisState:
-    settings = get_settings()
+async def _call_model_node(state: SynthesisState) -> SynthesisState:
     papers = state["papers"]
     mode = state["mode"]
-    if not settings.cerebras_api_key:
+    if not llm_configured():
         titles = ", ".join(paper.get("title", "Untitled") for paper in papers[:5])
         if mode == "summary":
-            return {"response": f"Selected papers: {titles}. Add a Cerebras API key to generate a deeper synthesis."}
+            return {"response": f"Selected papers: {titles}. Configure Google or Ollama to generate a deeper synthesis."}
         if mode == "compare":
-            return {"response": f"Selected papers for comparison: {titles}. Add a Cerebras API key to generate a full comparison."}
-        return {"response": f"Selected papers: {titles}. Add a Cerebras API key to answer research questions across them."}
+            return {"response": f"Selected papers for comparison: {titles}. Configure Google or Ollama to generate a full comparison."}
+        return {"response": f"Selected papers: {titles}. Configure Google or Ollama to answer research questions across them."}
 
-    payload = {
-        "model": settings.cerebras_model,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are a precise research assistant who synthesizes papers carefully. "
-                    "Always respond in plain text: no Markdown bold/italic markers (no ** or __), "
-                    "no hash headings, no fenced code unless the user explicitly asks for code."
-                ),
-            },
-            {"role": "user", "content": state["prompt"]},
-        ],
-        "temperature": 0.2,
-        "max_tokens": 900,
-    }
-    headers = {
-        "Authorization": f"Bearer {settings.cerebras_api_key}",
-        "Content-Type": "application/json",
-    }
     async with httpx.AsyncClient(timeout=60) as client:
         await enrich_missing_abstracts(client, papers)
-        response = await client.post(CEREBRAS_URL, headers=headers, json=payload)
-        if response.status_code >= 400:
-            try:
-                error_payload = response.json()
-                detail = error_payload.get("message") or error_payload.get("error") or response.text
-            except Exception:
-                detail = response.text
-            return {
-                "response": (
-                    "The synthesis model returned an error.\n"
-                    f"Status: {response.status_code}\n"
-                    f"Model: {settings.cerebras_model}\n"
-                    f"Detail: {detail}\n\n"
-                    "If this says the model does not exist, set CEREBRAS_MODEL in backend/.env to one of "
-                    "the models listed at https://api.cerebras.ai/v1/models."
-                )
-            }
-        data = response.json()
-    raw = data["choices"][0]["message"]["content"]
-    return {"response": _strip_markdown_noise(raw)}
+    try:
+        text, provider = await invoke_research_llm(
+            system_prompt=(
+                "You are a precise research assistant who synthesizes papers carefully. "
+                "Always respond in plain text: no Markdown bold/italic markers (no ** or __), "
+                "no hash headings, no fenced code unless the user explicitly asks for code."
+            ),
+            user_prompt=state["prompt"],
+            temperature=0.2,
+        )
+        return {"response": _strip_markdown_noise(text), "error": f"provider={provider}"}
+    except Exception as exc:  # noqa: BLE001
+        return {"response": f"The synthesis model failed. Detail: {exc}"}
 
 
 @lru_cache(maxsize=1)
 def _synthesis_graph():
     graph = StateGraph(SynthesisState)
     graph.add_node("prepare_prompt", _prepare_prompt_node)
-    graph.add_node("call_cerebras", _call_cerebras_node)
+    graph.add_node("call_model", _call_model_node)
     graph.set_entry_point("prepare_prompt")
-    graph.add_edge("prepare_prompt", "call_cerebras")
-    graph.add_edge("call_cerebras", END)
+    graph.add_edge("prepare_prompt", "call_model")
+    graph.add_edge("call_model", END)
     return graph.compile()
 
 

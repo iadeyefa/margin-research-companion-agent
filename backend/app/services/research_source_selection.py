@@ -4,12 +4,8 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
 
-import httpx
-
-from app.core.config import get_settings
-from app.services.research_llm import CEREBRAS_URL
+from app.services.research_model import invoke_research_llm, llm_configured
 from app.services.research_sources import SUPPORTED_SOURCES
 
 _SOURCE_GUIDE = """
@@ -143,11 +139,10 @@ async def resolve_search_sources(
     if user_sources is not None and len(user_sources) > 0 and explicit:
         return _ensure_minimum(explicit), "Using client-specified sources."
 
-    settings = get_settings()
     blended = "\n".join(
         segment for segment in (objective.strip(), (query_hint or "").strip(), planned_query.strip()) if segment
     )
-    if not settings.cerebras_api_key:
+    if not llm_configured():
         h = heuristic_sources_for(blended)
         return _ensure_minimum(h), f"Heuristic selection (no LLM key): {', '.join(h)}."
 
@@ -158,37 +153,19 @@ async def resolve_search_sources(
         'Respond with JSON only, no prose outside the object:\n'
         '{"sources":["source_id",...],"rationale":"one short sentence"}'
     )
-    payload: dict[str, Any] = {
-        "model": settings.cerebras_model,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You route academic search requests to the best open metadata catalogs. "
-                    "Never invent catalog names; only use identifiers from the user message guide."
-                ),
-            },
-            {"role": "user", "content": user_msg},
-        ],
-        "temperature": 0.1,
-        "max_tokens": 220,
-    }
-    headers = {"Authorization": f"Bearer {settings.cerebras_api_key}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=35) as client:
-        resp = await client.post(CEREBRAS_URL, headers=headers, json=payload)
-    if resp.status_code >= 400:
-        h = heuristic_sources_for(blended)
-        return (
-            _ensure_minimum(h),
-            f"Cerebras error ({resp.status_code}); heuristic fallback: {', '.join(h)}.",
-        )
-
     try:
-        data = resp.json()
-        raw_content = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError):
+        raw_content, provider = await invoke_research_llm(
+            system_prompt=(
+                "You route academic search requests to the best open metadata catalogs. "
+                "Never invent catalog names; only use identifiers from the user message guide. "
+                "Output JSON only."
+            ),
+            user_prompt=user_msg,
+            temperature=0.1,
+        )
+    except Exception:
         h = heuristic_sources_for(blended)
-        return _ensure_minimum(h), f"Malformed model response; heuristic: {', '.join(h)}."
+        return _ensure_minimum(h), f"Provider unavailable; heuristic: {', '.join(h)}."
 
     parsed_ids = _parse_sources_json(raw_content)
     rationale = ""
@@ -200,7 +177,7 @@ async def resolve_search_sources(
         pass
     if parsed_ids:
         ensured = _ensure_minimum(parsed_ids)
-        detail = rationale or "Model-selected catalogs."
+        detail = rationale or f"Model-selected catalogs ({provider})."
         return ensured, detail
     h = heuristic_sources_for(blended)
     return (

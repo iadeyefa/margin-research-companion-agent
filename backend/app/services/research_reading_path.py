@@ -4,12 +4,9 @@ from functools import lru_cache
 from typing import Any, Dict, List, Optional, TypedDict
 from langgraph.graph import END, StateGraph
 
-from app.core.config import get_settings
 from app.services.paper_prompt import papers_to_llm_context
+from app.services.research_model import invoke_research_llm, llm_configured
 from app.services.research_sources import enrich_missing_abstracts
-
-
-CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
 
 def _heuristic_priority(paper: dict) -> tuple[int, int, int]:
@@ -104,43 +101,25 @@ async def _generate_plan_node(state: ReadingPathState) -> ReadingPathState:
         return {}
     papers = state.get("papers") or []
     objective = state.get("objective")
-    settings = get_settings()
-    if not settings.cerebras_api_key:
+    if not llm_configured():
         return {"result": _heuristic_result(objective, papers)}
-
-    payload = {
-        "model": settings.cerebras_model,
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a precise research assistant who returns valid JSON for reading plans.",
-            },
-            {"role": "user", "content": state["prompt"]},
-        ],
-        "temperature": 0.2,
-        "max_tokens": 900,
-        "response_format": {"type": "json_object"},
-    }
-    headers = {
-        "Authorization": f"Bearer {settings.cerebras_api_key}",
-        "Content-Type": "application/json",
-    }
     async with httpx.AsyncClient(timeout=60) as client:
         await enrich_missing_abstracts(client, papers)
-        response = await client.post(CEREBRAS_URL, headers=headers, json=payload)
-        if response.status_code >= 400:
-            return {
-                "result": _heuristic_result(
-                    objective,
-                    papers,
-                    (
-                        "Falling back to heuristic ordering because the model call failed "
-                        f"(status {response.status_code})."
-                    ),
-                )
-            }
-        data = response.json()
-    return {"result": json.loads(data["choices"][0]["message"]["content"])}
+    try:
+        raw, _provider = await invoke_research_llm(
+            system_prompt="You are a precise research assistant who returns valid JSON for reading plans.",
+            user_prompt=state["prompt"],
+            temperature=0.2,
+        )
+        return {"result": json.loads(raw)}
+    except Exception as exc:
+        return {
+            "result": _heuristic_result(
+                objective,
+                papers,
+                f"Falling back to heuristic ordering because the model call failed ({exc}).",
+            )
+        }
 
 
 @lru_cache(maxsize=1)
