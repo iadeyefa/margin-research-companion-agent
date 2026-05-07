@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../../api/client'
 import type { Paper, ReadingPathResponse } from '../../api/types'
@@ -16,9 +16,10 @@ const PRESET_GOALS = [
 export function ReadingPathTab() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const id = Number(workspaceId)
-  const { selection, workspaceDetails, recordBrief, pushToast } = useWorkspaceStore()
+  const { selection, workspaceDetails, recordBrief, pushToast, updateWorkspaceState } = useWorkspaceStore()
   const detail = workspaceDetails[id]
   const [objective, setObjective] = useState('')
+  const [preferences, setPreferences] = useState('')
   const [running, setRunning] = useState(false)
   const [path, setPath] = useState<ReadingPathResponse | null>(null)
   const [progress, setProgress] = useState<Record<ProgressKey, 'unread' | 'reading' | 'done'>>({})
@@ -27,6 +28,14 @@ export function ReadingPathTab() {
 
   const fallbackPapers: Paper[] = detail?.saved_papers ?? []
   const papers = selection.workspaceId === id && selection.papers.length > 0 ? selection.papers : fallbackPapers
+  const workspaceIntent = useMemo(() => {
+    const raw = workspaceDetails[id]?.state?.find((entry) => entry.state_key === 'intent')?.value?.instructions
+    return typeof raw === 'string' ? raw : ''
+  }, [id, workspaceDetails])
+
+  useEffect(() => {
+    setPreferences(workspaceIntent)
+  }, [workspaceIntent])
 
   async function generate(presetObjective?: string) {
     const objectiveValue = (presetObjective ?? objective).trim() || null
@@ -36,7 +45,11 @@ export function ReadingPathTab() {
     }
     setRunning(true)
     try {
-      const response = await api.buildReadingPath({ objective: objectiveValue, papers })
+      const response = await api.buildReadingPath({
+        objective: objectiveValue,
+        preferences: preferences.trim() || null,
+        papers,
+      })
       setPath(response)
       setOrderOverride(null)
       const initialProgress: Record<ProgressKey, 'unread' | 'reading' | 'done'> = {}
@@ -119,6 +132,25 @@ export function ReadingPathTab() {
             {running ? 'Planning…' : path ? 'Regenerate' : 'Build path'}
           </button>
         </div>
+        <label className="field">
+          <span>Path preferences</span>
+          <textarea
+            className="reading-step-note"
+            rows={2}
+            placeholder="Example: prioritize foundational papers first, avoid highly mathematical papers initially, emphasize reproducibility."
+            value={preferences}
+            onChange={(event) => setPreferences(event.target.value)}
+          />
+          <div className="synthesis-action-row">
+            <button
+              type="button"
+              className="pill-button is-ghost"
+              onClick={() => void updateWorkspaceState(id, 'intent', { instructions: preferences })}
+            >
+              Save as workspace intent
+            </button>
+          </div>
+        </label>
         <div className="preset-row">
           {PRESET_GOALS.map((preset) => (
             <button

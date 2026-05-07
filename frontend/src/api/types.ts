@@ -32,6 +32,28 @@ export type SearchResponse = {
 
 export type SortOption = 'relevance' | 'newest' | 'most_cited'
 
+export type CollaborationTurn = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export type CollaborativeSearchPlan = {
+  query: string
+  sources: string[]
+  limit_per_source: number
+  year_from: number | null
+  year_to: number | null
+  open_access_only: boolean
+  sort_by: SortOption
+}
+
+export type ResearchSearchCollaborateResponse = {
+  phase: 'asking' | 'ready'
+  assistant_message: string
+  quick_replies: string[]
+  search: CollaborativeSearchPlan | null
+}
+
 export type ExportResponse = {
   format: string
   content: string
@@ -109,6 +131,10 @@ export const SOURCE_OPTIONS: Array<{ key: SourceKey; label: string; tone: string
 ]
 
 export const ALL_SOURCE_KEYS = SOURCE_OPTIONS.map((option) => option.key)
+
+export function isSourceKey(value: string): value is SourceKey {
+  return (ALL_SOURCE_KEYS as readonly string[]).includes(value)
+}
 
 export const paperKey = (paper: Pick<Paper, 'source' | 'external_id'>) =>
   `${paper.source}::${paper.external_id}`

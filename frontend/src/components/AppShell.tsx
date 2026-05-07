@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useWorkspaceStore } from '../state/WorkspaceStore'
 import { CommandPalette } from './CommandPalette'
 import { SelectionBar } from './SelectionBar'
@@ -11,6 +11,23 @@ const PRIMARY_NAV: Array<{ to: string; label: string; icon: string }> = [
   { to: '/library', label: 'Library', icon: '☷' },
 ]
 
+/** Short label for collapsed rail: two letters when possible so projects are easier to tell apart. */
+function workspaceNavAbbrev(title: string): string {
+  const t = title.trim()
+  if (!t) return 'W'
+  const strip = (s: string) => s.replace(/[^a-zA-Z0-9]/g, '')
+  const parts = t.split(/\s+/).filter((p) => p.length > 0)
+  if (parts.length >= 2) {
+    const a = strip(parts[0]).slice(0, 1)
+    const b = strip(parts[1]).slice(0, 1)
+    const pair = `${a}${b}`.toUpperCase()
+    if (pair.length >= 2) return pair.slice(0, 2)
+  }
+  const core = strip(parts[0] ?? t)
+  if (core.length >= 2) return core.slice(0, 2).toUpperCase()
+  return (t[0] ?? 'W').toUpperCase()
+}
+
 interface NavTooltip {
   label: string
   icon: string
@@ -20,7 +37,7 @@ interface NavTooltip {
 export function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { workspaces, createWorkspace, loadingWorkspaces } = useWorkspaceStore()
+  const { workspaces, createWorkspace, loadingWorkspaces, selection } = useWorkspaceStore()
   const [collapsed, setCollapsed] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(max-width: 880px)').matches,
   )
@@ -43,16 +60,18 @@ export function AppShell() {
     return match ? Number(match[1]) : null
   })()
 
+  const selectionBarVisible = selection.papers.length > 0 && selection.workspaceId !== null
+
   async function handleCreateWorkspace() {
     const created = await createWorkspace()
     if (created) navigate(`/workspaces/${created.id}/overview`)
   }
 
   return (
-    <div className={`app-shell-v2${collapsed ? ' is-collapsed' : ''}`}>
+    <div className={`app-shell-v2${collapsed ? ' is-collapsed' : ''}${selectionBarVisible ? ' has-selection-bar' : ''}`}>
       <aside className="app-nav" aria-label="Primary navigation">
         <div className="app-nav-header">
-          <div className="app-brand">
+          <Link className="app-brand" to="/" title="Dashboard" aria-label="Go to dashboard">
             <span className="app-brand-mark">RC</span>
             {!collapsed && (
               <div>
@@ -60,7 +79,7 @@ export function AppShell() {
                 <p className="app-brand-tag">Find · Organize · Synthesize</p>
               </div>
             )}
-          </div>
+          </Link>
           <button
             className="icon-button"
             type="button"
@@ -91,7 +110,7 @@ export function AppShell() {
           </ul>
         </nav>
 
-        <nav className="app-nav-section app-nav-workspaces" aria-label="Workspaces">
+        <nav className="app-nav-section app-nav-workspaces" aria-label="Workspaces" aria-busy={loadingWorkspaces && workspaces.length === 0}>
           <div className="app-nav-section-header">
             <p className="app-nav-label">Projects</p>
             {!collapsed && (
@@ -102,7 +121,29 @@ export function AppShell() {
           </div>
           <ul>
             {loadingWorkspaces && workspaces.length === 0 ? (
-              collapsed ? null : <li className="app-nav-empty">Loading…</li>
+              collapsed ? (
+                <>
+                  {[0, 1, 2].map((i) => (
+                    <li key={i} className="nav-skeleton-dots">
+                      <span className="nav-skeleton-dot" />
+                    </li>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {[0, 1, 2, 3].map((i) => (
+                    <li key={i}>
+                      <div className="nav-skeleton-item" aria-hidden>
+                        <span className="nav-skeleton-avatar" />
+                        <span className="nav-skeleton-lines">
+                          <span className="ui-shimmer-bar" />
+                          <span className="ui-shimmer-bar" />
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </>
+              )
             ) : workspaces.length === 0 ? (
               collapsed ? null : (
                 <li className="app-nav-empty">
@@ -122,11 +163,13 @@ export function AppShell() {
                       const expandedActive = isActive || activeWorkspaceId === workspace.id
                       return `app-nav-link app-nav-workspace${expandedActive ? ' is-active' : ''}`
                     }}
-                    onMouseEnter={(e) => showTooltip(e, workspace.title, workspace.title.slice(0, 1).toUpperCase() || 'W')}
+                    onMouseEnter={(e) =>
+                      showTooltip(e, workspace.title, workspaceNavAbbrev(workspace.title))
+                    }
                     onMouseLeave={hideTooltip}
                   >
                     <span className="app-nav-icon workspace-initial" aria-hidden="true">
-                      {workspace.title.slice(0, 1).toUpperCase() || 'W'}
+                      {workspaceNavAbbrev(workspace.title)}
                     </span>
                     <span className="app-nav-workspace-text">
                       <span className="app-nav-workspace-title">{workspace.title}</span>

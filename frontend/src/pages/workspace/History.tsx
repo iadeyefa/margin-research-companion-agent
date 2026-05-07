@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom'
 import { useWorkspaceStore } from '../../state/WorkspaceStore'
 import { EmptyState } from '../../components/EmptyState'
+import { PageLoading } from '../../components/PageLoading'
 
 function formatRelative(value: string): string {
   const date = new Date(value)
@@ -14,7 +15,7 @@ export function HistoryTab() {
   const { workspaceDetails, deleteBrief } = useWorkspaceStore()
   const detail = workspaceDetails[id]
 
-  if (!detail) return <p className="muted">Loading…</p>
+  if (!detail) return <PageLoading message="Loading history…" />
 
   const briefsForWorkspace = detail.briefs ?? []
 

@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { EmptyState } from '../../components/EmptyState'
+import { PageLoading } from '../../components/PageLoading'
 import { SourceTag } from '../../components/SourceTag'
 import { useWorkspaceStore } from '../../state/WorkspaceStore'
 
@@ -46,7 +47,7 @@ export function OverviewTab() {
   }, [detail])
 
   if (!detail) {
-    return <p className="muted">Loading…</p>
+    return <PageLoading message="Loading workspace overview…" />
   }
 
   const recentSearches = detail.searches.slice(0, 4)

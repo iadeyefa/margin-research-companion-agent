@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { LibraryPaper } from '../api/types'
 import { EmptyState } from '../components/EmptyState'
+import { PageLoading } from '../components/PageLoading'
 import { PageHeader } from '../components/PageHeader'
 import { SourceTag } from '../components/SourceTag'
 import { useWorkspaceStore } from '../state/WorkspaceStore'
@@ -13,6 +14,7 @@ export function LibraryPage() {
   const { workspaces, removePaper, pushToast } = useWorkspaceStore()
   const [papers, setPapers] = useState<LibraryPaper[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [workspaceFilter, setWorkspaceFilter] = useState<'all' | number>('all')
   const [sourceFilter, setSourceFilter] = useState('all')
@@ -21,11 +23,14 @@ export function LibraryPage() {
 
   const reload = useCallback(async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const data = await api.listLibrary()
       setPapers(data)
     } catch (caught) {
-      pushToast(caught instanceof Error ? caught.message : 'Failed to load library.', 'error')
+      const message = caught instanceof Error ? caught.message : 'Failed to load library.'
+      setLoadError(message)
+      pushToast(message, 'error')
     } finally {
       setLoading(false)
     }
@@ -127,10 +132,37 @@ export function LibraryPage() {
       </section>
 
       <section className="library-section">
-        <div className="surface-header">
-          <p className="muted">{loading ? 'Loading…' : `${filtered.length} of ${papers.length} papers`}</p>
+        <div className="surface-header library-meta-row">
+          {loading ? (
+            <PageLoading message="Fetching saved papers…" dense />
+          ) : (
+            <p className="muted">
+              {filtered.length} of {papers.length} {papers.length === 1 ? 'paper' : 'papers'}
+            </p>
+          )}
         </div>
-        {!loading && filtered.length === 0 ? (
+        {loadError && (
+          <div className="library-error-banner" role="alert">
+            <span>
+              <strong>Could not reach the API.</strong> {loadError} Make sure the backend is running on port 3000.
+            </span>
+            <button type="button" className="pill-button is-primary" onClick={() => void reload()}>
+              Retry
+            </button>
+          </div>
+        )}
+        {loading ? (
+          <div className="library-skeleton-stack" aria-hidden>
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="library-skeleton-card">
+                <span className="ui-shimmer-bar" />
+                <span className="ui-shimmer-bar" />
+                <span className="ui-shimmer-bar" />
+                <span className="ui-shimmer-bar" />
+              </div>
+            ))}
+          </div>
+        ) : loadError ? null : filtered.length === 0 ? (
           <EmptyState
             size="lg"
             title={papers.length === 0 ? 'Your library is empty' : 'No papers match these filters'}

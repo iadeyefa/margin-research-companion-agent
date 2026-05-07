@@ -3,6 +3,7 @@ import type {
   LibraryPaper,
   Paper,
   ReadingPathResponse,
+  ResearchSearchCollaborateResponse,
   SearchResponse,
   SortOption,
   SourceKey,
@@ -138,17 +139,31 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  guidedSearchTurn: (payload: {
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>
+    desired_catalog_count: number
+    workspace_id?: number | null
+  }) =>
+    requestJson<ResearchSearchCollaborateResponse>('/api/research/search/collaborate', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: payload.messages,
+        desired_catalog_count: payload.desired_catalog_count,
+        workspace_id: payload.workspace_id ?? undefined,
+      }),
+    }),
   synthesize: (payload: {
     mode: 'summary' | 'compare' | 'question'
     style: string
     question: string | null
+    instructions?: string | null
     papers: Paper[]
   }) =>
     requestJson<{ response: string; mode: string }>('/api/research/synthesize', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  buildReadingPath: (payload: { objective: string | null; papers: Paper[] }) =>
+  buildReadingPath: (payload: { objective: string | null; preferences?: string | null; papers: Paper[] }) =>
     requestJson<ReadingPathResponse>('/api/research/reading-path', {
       method: 'POST',
       body: JSON.stringify(payload),

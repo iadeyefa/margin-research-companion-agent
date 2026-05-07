@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { EmptyState } from '../../components/EmptyState'
+import { PageLoading } from '../../components/PageLoading'
 import { useWorkspaceStore } from '../../state/WorkspaceStore'
 
 export function NotesTab() {
@@ -40,7 +41,7 @@ export function NotesTab() {
     }
   }, [draft, id, isDirty, updateWorkspace])
 
-  if (!detail) return <p className="muted">Loading…</p>
+  if (!detail) return <PageLoading message="Loading notes…" />
 
   const status = isDirty ? 'Saving…' : savedAt ? `Saved ${new Date(savedAt).toLocaleTimeString()}` : 'All changes saved'
 
