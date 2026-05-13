@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { LibraryPaper, SearchHistory, WorkspaceDetail, WorkspaceSummary } from '../api/types'
 import { EmptyState } from '../components/EmptyState'
+import { PageLoading } from '../components/PageLoading'
 import { PageHeader } from '../components/PageHeader'
 import { SourceTag } from '../components/SourceTag'
 import { useWorkspaceStore } from '../state/WorkspaceStore'
@@ -220,7 +221,17 @@ export function DashboardPage() {
             </Link>
           </div>
           {loadingLibrary ? (
-            <p className="muted">Loading…</p>
+            <>
+              <PageLoading message="Loading recent saves…" dense />
+              <ul className="dashboard-list-skel" aria-hidden>
+                {[0, 1, 2, 3].map((i) => (
+                  <li key={i} className="dashboard-list-row-skel">
+                    <span className="ui-shimmer-bar" />
+                    <span className="ui-shimmer-bar" />
+                  </li>
+                ))}
+              </ul>
+            </>
           ) : recentlySaved.length === 0 ? (
             <EmptyState title="Nothing saved yet" description="Saved papers from any workspace appear here." />
           ) : (

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { paperKey, type SourceKey } from '../../api/types'
 import { EmptyState } from '../../components/EmptyState'
+import { PageLoading } from '../../components/PageLoading'
 import { PaperCard } from '../../components/PaperCard'
 import { SOURCE_OPTIONS } from '../../api/types'
 import { useWorkspaceStore } from '../../state/WorkspaceStore'
@@ -72,7 +73,7 @@ export function SavedTab() {
   if (!detailReady) {
     return (
       <div className="saved-tab">
-        <p className="muted">Loading saved papers…</p>
+        <PageLoading message="Loading saved papers…" />
       </div>
     )
   }

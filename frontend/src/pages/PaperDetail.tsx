@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { LibraryPaper, Paper } from '../api/types'
+import { EmptyState } from '../components/EmptyState'
+import { PageLoading } from '../components/PageLoading'
 import { PageHeader } from '../components/PageHeader'
 import { SourceTag } from '../components/SourceTag'
-import { EmptyState } from '../components/EmptyState'
 import { useWorkspaceStore } from '../state/WorkspaceStore'
 
 type LocationState = { paper?: Paper; workspaceId?: number }
@@ -80,7 +81,7 @@ export function PaperDetailPage() {
   if (loading && !paper) {
     return (
       <div className="page">
-        <p className="muted">Loading paper…</p>
+        <PageLoading message="Loading paper…" />
       </div>
     )
   }

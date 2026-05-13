@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../../api/client'
 import { paperKey, type Paper } from '../../api/types'
@@ -34,15 +34,24 @@ const MODES: Array<{ key: SynthesisMode; label: string; description: string }> =
 export function SynthesisTab() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const id = Number(workspaceId)
-  const { selection, workspaceDetails, recordBrief, deleteBrief, pushToast, togglePaperSelection } =
+  const { selection, workspaceDetails, recordBrief, deleteBrief, pushToast, togglePaperSelection, updateWorkspaceState } =
     useWorkspaceStore()
   const [mode, setMode] = useState<SynthesisMode>('summary')
   const [style, setStyle] = useState<SynthesisStyle>('balanced')
   const [question, setQuestion] = useState('')
+  const [instructions, setInstructions] = useState('')
   const [output, setOutput] = useState('')
   const [running, setRunning] = useState(false)
 
   const papers: Paper[] = selection.workspaceId === id ? selection.papers : []
+  const workspaceIntent = useMemo(() => {
+    const raw = workspaceDetails[id]?.state?.find((entry) => entry.state_key === 'intent')?.value?.instructions
+    return typeof raw === 'string' ? raw : ''
+  }, [id, workspaceDetails])
+
+  useEffect(() => {
+    setInstructions(workspaceIntent)
+  }, [workspaceIntent])
 
   async function run() {
     if (papers.length === 0) {
@@ -68,6 +77,7 @@ export function SynthesisTab() {
           style,
           question:
             'For each paper, extract the main method, datasets used, key findings, and limitations. Format the answer as a markdown list, one section per paper.',
+          instructions: instructions.trim() || null,
           papers,
         })
         body = response.response
@@ -77,6 +87,7 @@ export function SynthesisTab() {
           mode,
           style,
           question: mode === 'question' ? question.trim() : null,
+          instructions: instructions.trim() || null,
           papers,
         })
         body = response.response
@@ -160,6 +171,25 @@ export function SynthesisTab() {
             ))}
           </div>
         </div>
+        <label className="field">
+          <span>Additional instructions</span>
+          <textarea
+            className="question-input"
+            placeholder="Example: Focus on practical trade-offs for startup teams, keep it under 300 words, and prioritize post-2021 evidence."
+            rows={3}
+            value={instructions}
+            onChange={(event) => setInstructions(event.target.value)}
+          />
+          <div className="synthesis-action-row">
+            <button
+              type="button"
+              className="pill-button is-ghost"
+              onClick={() => void updateWorkspaceState(id, 'intent', { instructions })}
+            >
+              Save as workspace intent
+            </button>
+          </div>
+        </label>
 
         {papers.length === 0 ? (
           <EmptyState
